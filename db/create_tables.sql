@@ -18,8 +18,7 @@ CREATE TABLE net
     max_catch     INT,
     cooldown      INT
 );
-
-CREATE TABLE players
+CREATE TABLE player
 (
     player_id INT PRIMARY KEY,
     rod       INT REFERENCES rod (level),
@@ -28,15 +27,15 @@ CREATE TABLE players
 
 CREATE TABLE storage
 (
-    player_id       INT REFERENCES players (player_id),
-    cod_storaged    INT,
-    salmon_storaged INT,
-    puffer_storaged INT
+    player_id     INT REFERENCES player (player_id),
+    cod_stored    INT,
+    salmon_stored INT,
+    puffer_stored INT
 );
 
 CREATE TABLE stats
 (
-    player_id     INT REFERENCES players (player_id),
+    player_id     INT REFERENCES player (player_id),
     level         INT,
     experience    INT,
     balance       INT,
@@ -48,7 +47,7 @@ CREATE TABLE stats
 
 CREATE TABLE fish
 (
-    fish_id    INT PRIMARY KEY,
+    name  TEXT PRIMARY KEY,
     cost       INT,
     experience INT
 );
