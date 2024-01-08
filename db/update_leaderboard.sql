@@ -2,7 +2,10 @@ CREATE OR REPLACE PROCEDURE update_leaderboard()
     LANGUAGE plpgsql
 AS
 $$
+DECLARE
+    current_time TIMESTAMP;
 BEGIN
+    current_time := NOW(); -- Get current timestamp
 
     UPDATE leaderboard AS l
     SET rank = subquery.rank
@@ -10,7 +13,7 @@ BEGIN
           FROM leaderboard) AS subquery
     WHERE l.player_id = subquery.player_id;
 
-    RAISE NOTICE 'Leaderboard was updated.';
+    RAISE NOTICE 'Leaderboard was updated at %', current_time; -- Raise error message with current timestamp
 
 END;
 $$;
