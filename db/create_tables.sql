@@ -36,7 +36,6 @@ CREATE TABLE storage
     puffer_stored INT
 );
 
-
 CREATE TABLE stats
 (
     player_id     INT REFERENCES player (player_id),
@@ -44,7 +43,8 @@ CREATE TABLE stats
     total_earning INT,
     cod_caught    INT,
     salmon_caught INT,
-    puffer_caught INT
+    puffer_caught INT,
+    rank int REFERENCES leaderboard(player_id)
 );
 
 CREATE TABLE fish
