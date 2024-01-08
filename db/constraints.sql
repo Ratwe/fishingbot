@@ -31,14 +31,6 @@ ALTER TABLE storage
         CHECK (puffer_stored >= 0);
 
 ALTER TABLE stats
-    ADD CONSTRAINT non_less_zero_level
-        CHECK ( level >= 0);
-
-ALTER TABLE stats
-    ADD CONSTRAINT non_less_zero_experience
-        CHECK ( experience >= 0);
-
-ALTER TABLE stats
     ADD CONSTRAINT non_less_zero_balance
         CHECK ( balance >= 0);
 
@@ -62,9 +54,13 @@ ALTER TABLE fish
     ADD CONSTRAINT non_zero_cost
         CHECK ( cost > 0 );
 
-ALTER TABLE fish
-    ADD CONSTRAINT non_zero_experience
-        CHECK ( experience > 0 );
+ALTER TABLE leaderboard
+    ADD CONSTRAINT non_zero_rank
+        CHECK ( rank > 0 );
+
+ALTER TABLE leaderboard
+    ADD CONSTRAINT non_less_zero_earning
+        CHECK ( total_earning >= 0 );
 
 
 SELECT con.*
@@ -72,4 +68,4 @@ FROM pg_catalog.pg_constraint con
      INNER JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
      INNER JOIN pg_catalog.pg_namespace nsp ON nsp.oid = connamespace
 WHERE nsp.nspname = 'public'
-      AND rel.relname = 'rod';
+      AND rel.relname = 'stats';
