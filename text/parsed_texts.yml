@@ -1,0 +1,159 @@
+﻿-
+   var: bot_name
+   text: Рыбалка 🐟 | Игровой бот
+-
+   var: bot_desc
+   text: Лови рыбу, прокачивай персонажа, зарабатывай деньги, поднимайся в топе!
+-
+   var: bot_start
+   text: Нет времени объяснять, пора рыбачить! 
+-
+   var: main_menu
+   text: **Меню:**
+-
+   var: main_menu_fish
+   text: 1. Ловить рыбу (/fish)
+-
+   var: main_menu_sell
+   text: 2. Продать рыбу (/sell)
+-
+   var: main_menu_shop
+   text: 3. Магазин (/shop)
+-
+   var: main_menu_storage
+   text: 4. Склад (/storage)
+-
+   var: main_menu_profile
+   text: 5. Профиль (/profile)
+-
+   var: main_menu_leadeerboard
+   text: 6. Таблица лидеров (/leaderboard)
+-
+   var: fish_button
+   text: Ловить
+-
+   var: sell_button
+   text: Продать
+-
+   var: shop_button
+   text: Магазин
+-
+   var: storage_button
+   text: Склад
+-
+   var: profile_button
+   text: Профиль
+-
+   var: leaderboard_button
+   text: Рейтинг
+-
+   var: level_up
+   text: **Поздравляем, вы достигли {0} уровня!**
+-
+   var: rod_level_up_tip
+   text: Вам доступно улучшение удочки в магазине.
+-
+   var: back
+   text: Назад
+-
+   var: fish
+   text: **Вы поймали:**
+-
+   var: fish_cod_caught
+   text: - {0} трески
+-
+   var: fish_salmon_caught
+   text: - {1} лосося
+-
+   var: fish_puffer_caught
+   text: - {2} иглобрюха
+-
+   var: fish_xp_gain
+   text: Получено {3} XP
+-
+   var: sell_success
+   text: Вы продали:
+-
+   var: sell_success_cod
+   text: - {0} трески
+-
+   var: sell_success_salmon
+   text: - {1} лосося
+-
+   var: sell_success_puffer
+   text: - {2} иглобрюха
+-
+   var: sell_success_money
+   text: и **получили {3}$**
+-
+   var: sell_fail
+   text: Нечего продавать. Ловите рыбу!
+-
+   var: shop_menu
+   text: **Магазин** 
+-
+   var: shop_menu_rod
+   text: 1. Улучшить удочку за {0}$ (/rod) 
+-
+   var: shop_menu_net
+   text: 2. Купить сеть за {1}$ (/net) 
+-
+   var: shop_menu_back
+   text: 3. Назад в меню (/menu)
+-
+   var: balance
+   text: Ваш баланс: {0}$
+-
+   var: shop_menu_net_purchased
+   text: 2. Сеть уже куплена!
+-
+   var: rod_level_up_success
+   text: Удочка улучшена!
+-
+   var: rod_level_up_fail
+   text: Недостаточно денег!
+-
+   var: net_purchase_success
+   text: Сеть куплена!
+-
+   var: net_purchase_fail
+   text: Недостаточно денег или сеть уже куплена!
+-
+   var: profile
+   text: **Профиль**
+-
+   var: profile_caught
+   text: Поймано:
+-
+   var: profile_caught_cod
+   text: - {2} трески
+-
+   var: profile_caught_cod
+   text: - {3} лосося
+-
+   var: profile_caught_cod
+   text: - {4} иглобрюха
+-
+   var: profile_balance
+   text: Баланс: {0}$
+-
+   var: profile_total_earning
+   text: Всего заработано: {1}$
+-
+   var: profile_rank
+   text: Позиция в рейтинге: {5}-е место
+-
+   var: storage
+   text: **Склад**
+-
+   var: storage_cod
+   text: - треска: {0}
+-
+   var: storage_salmon
+   text: - лосось: {1}
+-
+   var: storage_puffer
+   text: - иглобрюх: {2}
+-
+   var: storage_total_cost
+   text: Общая стоимость: {3}$
