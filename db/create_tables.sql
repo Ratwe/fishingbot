@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS net
     id             SERIAL PRIMARY KEY,
     required_level INT UNIQUE,
     price          INT,
-    cooldown       FLOAT
+    cooldown       FLOAT,
+    catch_coef     FLOAT
 );
+
 
 drop table fish_chances;
 CREATE TABLE IF NOT EXISTS fish_chances
@@ -79,6 +81,13 @@ CREATE TABLE IF NOT EXISTS leaderboard
     id        SERIAL PRIMARY KEY,
     player_id INT REFERENCES player (player_id),
     rank      INT
+);
+
+create table if not EXISTS promote_channels
+(
+    id SERIAL PRIMARY KEY,
+    link varchar(50),
+    taps int
 );
 
 INSERT INTO player
