@@ -87,8 +87,7 @@ create table if not EXISTS promote_channels
 (
     id SERIAL PRIMARY KEY,
     link varchar(50),
-    taps int,
-    subscribed int
+    taps int
 );
 
 INSERT INTO player
