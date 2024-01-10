@@ -1,76 +1,89 @@
-CREATE TABLE rod
+CREATE TABLE IF NOT EXISTS fish
 (
-    level         INT PRIMARY KEY,
-    price         INT,
-    cod_chance    FLOAT,
-    salmon_chance FLOAT,
-    puffer_chance FLOAT,
-    min_catch     INT,
-    max_catch     INT,
-    cooldown      FLOAT
+    fish_name  VARCHAR(30) PRIMARY KEY,
+    cost       INT,
+    experience INT
 );
 
-CREATE TABLE net
+
+CREATE TABLE IF NOT EXISTS player
 (
-    purchased     bool PRIMARY KEY,
-    cod_chance    FLOAT,
-    salmon_chance FLOAT,
-    puffer_chance FLOAT,
-    min_catch     INT,
-    max_catch     INT,
-    cooldown      INT
+    player_id  INT PRIMARY KEY,
+    name       VARCHAR(50),
+    level      INT,
+    experience INT,
+    avg_catch  INT
 );
 
-CREATE TABLE player
+CREATE TABLE IF NOT EXISTS rod
 (
-    player_id INT PRIMARY KEY,
-    rod       INT REFERENCES rod (level),
-    net       BOOL REFERENCES net (purchased)
+    id             SERIAL PRIMARY KEY,
+    player_id      INT REFERENCES player (player_id) ON DELETE CASCADE,
+    required_level INT,
+    price          INT,
+    cooldown       FLOAT
 );
 
-CREATE TABLE storage
+CREATE TABLE IF NOT EXISTS net
 (
-    player_id     INT REFERENCES player (player_id),
-    cod_stored    INT,
-    salmon_stored INT,
-    puffer_stored INT
+    id             SERIAL PRIMARY KEY,
+    player_id      INT REFERENCES player (player_id) ON DELETE CASCADE,
+    required_level INT,
+    price          INT,
+    cooldown       FLOAT
 );
 
-CREATE TABLE stats
+CREATE TABLE IF NOT EXISTS fish_chances
 (
-    player_id     INT REFERENCES player (player_id),
+    id           SERIAL PRIMARY KEY,
+    fish_name    VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
+    rod_level    INT REFERENCES rod (id) ON DELETE CASCADE,
+    net_level    INT REFERENCES net (id) ON DELETE CASCADE,
+    catch_chance NUMERIC(3, 3)
+);
+
+
+CREATE TABLE IF NOT EXISTS stats
+(
+    id            SERIAL PRIMARY KEY,
+    player_id     INT REFERENCES player (player_id) ON DELETE CASCADE,
     balance       INT,
-    total_earning INT,
-    cod_caught    INT,
-    salmon_caught INT,
-    puffer_caught INT,
-    rank int REFERENCES leaderboard(player_id)
+    total_earning INT
 );
 
-CREATE TABLE fish
+CREATE TABLE IF NOT EXISTS fish_caught
 (
-    name TEXT PRIMARY KEY,
-    cost INT
+    id            SERIAL PRIMARY KEY,
+    stats_id      INT REFERENCES stats (id),
+    fish_name     VARCHAR(30) REFERENCES fish (fish_name),
+    caught_amount INT
 );
 
-CREATE TABLE leaderboard
+CREATE TABLE IF NOT EXISTS storage
 (
-    player_id int unique REFERENCES player(player_id),
-    total_earning int,
-    rank int
+    id        SERIAL PRIMARY KEY,
+    player_id INT REFERENCES player (player_id)
 );
 
-INSERT INTO leaderboard
-(player_id, total_earning, rank)
-VALUES
-((SELECT player_id FROM player ORDER BY random() LIMIT 1),
- FLOOR(random() * 1000),
- null);
+CREATE TABLE IF NOT EXISTS fish_stored
+(
+    id            SERIAL PRIMARY KEY,
+    storage_id    INT REFERENCES storage (id),
+    fish_name     VARCHAR(30) REFERENCES fish (fish_name),
+    stored_amount INT
+);
+
+CREATE TABLE IF NOT EXISTS leaderboard
+(
+    id        SERIAL PRIMARY KEY,
+    player_id INT REFERENCES player (player_id),
+    rank      INT
+);
 
 INSERT INTO player
-(player_id, rod, net)
-VALUES
-(FLOOR(random() * 100), -- player_id
- FLOOR(random() * 10), -- rod
- CASE WHEN random() > 0.5 THEN TRUE ELSE FALSE END); -- net
+VALUES (2, 'name2', 0, 0, 2);
 
+insert into fish(fish_name, cost, experience) VALUES
+                                                  ('cod', 1, 3),
+                                                  ('salmon', 3, 5),
+                                                  ('puffer', 5, 10);
