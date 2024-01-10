@@ -35,14 +35,14 @@ CREATE TABLE IF NOT EXISTS net
 );
 
 
-drop table fish_chances;
+DROP TABLE fish_chances;
 CREATE TABLE IF NOT EXISTS fish_chances
 (
-    id                 SERIAL PRIMARY KEY,
-    fish_name          VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
-    rod_id INT REFERENCES rod (id) ON DELETE CASCADE,
-    net_id INT REFERENCES net (id) ON DELETE CASCADE,
-    catch_chance       NUMERIC(4, 3)
+    id           SERIAL PRIMARY KEY,
+    fish_name    VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
+    rod_id       INT REFERENCES rod (id) ON DELETE CASCADE,
+    net_id       INT REFERENCES net (id) ON DELETE CASCADE,
+    catch_chance NUMERIC(4, 3)
 );
 
 
@@ -83,13 +83,16 @@ CREATE TABLE IF NOT EXISTS leaderboard
     rank      INT
 );
 
-create table if not EXISTS promote_channels
+CREATE TABLE IF NOT EXISTS promote_channels
 (
-    id SERIAL PRIMARY KEY,
-    link varchar(50),
-    taps int,
-    subscribed int
+    id   SERIAL PRIMARY KEY,
+    link VARCHAR(50) UNIQUE,
+    taps INT
 );
+
+INSERT INTO promote_channels
+VALUES (default, 'https://t.me/sobachki_real', 0),
+       (default, 'https://t.me/kotiki_real', 0);
 
 INSERT INTO player
 VALUES (2, 'name2', 0, 0, 2);
