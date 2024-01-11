@@ -5,33 +5,32 @@ CREATE TABLE IF NOT EXISTS fish
     experience INT
 );
 
-
+DROP TABLE player;
 CREATE TABLE IF NOT EXISTS player
 (
     player_id  INT PRIMARY KEY,
     name       VARCHAR(50),
-    rod_id     INT REFERENCES rod (id),
-    net_id     INT REFERENCES net (id),
+    rod_level  INT REFERENCES rod (level),
+    net_level  INT REFERENCES net (level),
     level      INT,
-    experience INT,
-    avg_catch  INT
+    experience INT
 );
 
+DROP TABLE rod;
 CREATE TABLE IF NOT EXISTS rod
 (
-    id             SERIAL PRIMARY KEY,
-    required_level INT UNIQUE,
-    price          INT,
-    cooldown       FLOAT
+    level    INT PRIMARY KEY,
+    price    INT,
+    cooldown FLOAT
 );
 
+DROP TABLE net;
 CREATE TABLE IF NOT EXISTS net
 (
-    id             SERIAL PRIMARY KEY,
-    required_level INT UNIQUE,
-    price          INT,
-    cooldown       FLOAT,
-    catch_coef     FLOAT
+    level      INT PRIMARY KEY,
+    price      INT,
+    cooldown   FLOAT,
+    catch_coef FLOAT
 );
 
 
@@ -40,11 +39,10 @@ CREATE TABLE IF NOT EXISTS fish_chances
 (
     id           SERIAL PRIMARY KEY,
     fish_name    VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
-    rod_id       INT REFERENCES rod (id) ON DELETE CASCADE,
-    net_id       INT REFERENCES net (id) ON DELETE CASCADE,
+    rod_level    INT REFERENCES rod (level),
+    net_level    INT REFERENCES net (level),
     catch_chance NUMERIC(4, 3)
 );
-
 
 CREATE TABLE IF NOT EXISTS stats
 (
@@ -95,7 +93,7 @@ VALUES (default, 'https://t.me/sobachki_real', 0),
        (default, 'https://t.me/kotiki_real', 0);
 
 INSERT INTO player
-VALUES (2, 'name2', 0, 0, 2);
+VALUES (2, 'name2', 0, 0, 2, 0);
 
 INSERT INTO fish(fish_name, cost, experience)
 VALUES ('cod', 1, 3),
