@@ -4,15 +4,15 @@ AS
 $$
 DECLARE
     i INT;
-    current_rod_id INT;
-    current_net_id INT;
+    current_rod_level INT;
+    current_net_level INT;
     cod_chance NUMERIC(4, 3);
     salmon_chance NUMERIC(4, 3);
     puffer_chance NUMERIC(4, 3);
 BEGIN
     FOR i IN 0..count LOOP
-        select id from rod where required_level = i into current_rod_id;
-        select id from net where required_level = i + 5 into current_net_id;
+        current_rod_level := i;
+        current_net_level := i;
 
         IF i <= 5 THEN
             cod_chance := 1.0;
@@ -32,13 +32,14 @@ BEGIN
             puffer_chance := 1.0 - cod_chance - salmon_chance;
         END IF;
 
-        INSERT INTO fish_chances (fish_name, rod_id, net_id, catch_chance)
-        VALUES ('cod', current_rod_id, current_net_id, cod_chance),
-               ('salmon', current_rod_id, current_net_id, salmon_chance),
-               ('puffer', current_rod_id, current_net_id, puffer_chance);
+        INSERT INTO fish_chances (fish_name, rod_level, net_level, catch_chance)
+        VALUES ('cod', current_rod_level, current_net_level, cod_chance),
+               ('salmon', current_rod_level, current_net_level, salmon_chance),
+               ('puffer', current_rod_level, current_net_level, puffer_chance);
     END LOOP;
 END;
 $$;
 
 TRUNCATE fish_chances;
 call insert_fishing_chances(50);
+select * from fish_chances;
