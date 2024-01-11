@@ -5,43 +5,44 @@ CREATE TABLE IF NOT EXISTS fish
     experience INT
 );
 
-
+DROP TABLE player;
 CREATE TABLE IF NOT EXISTS player
 (
     player_id  INT PRIMARY KEY,
     name       VARCHAR(50),
+    rod_level  INT REFERENCES rod (level),
+    net_level  INT REFERENCES net (level),
     level      INT,
-    experience INT,
-    avg_catch  INT
+    experience INT
 );
 
+DROP TABLE rod;
 CREATE TABLE IF NOT EXISTS rod
 (
-    id             SERIAL PRIMARY KEY,
-    player_id      INT REFERENCES player (player_id) ON DELETE CASCADE,
-    required_level INT,
-    price          INT,
-    cooldown       FLOAT
+    level    INT PRIMARY KEY,
+    price    INT,
+    cooldown FLOAT
 );
 
+DROP TABLE net;
 CREATE TABLE IF NOT EXISTS net
 (
-    id             SERIAL PRIMARY KEY,
-    player_id      INT REFERENCES player (player_id) ON DELETE CASCADE,
-    required_level INT,
-    price          INT,
-    cooldown       FLOAT
+    level      INT PRIMARY KEY,
+    price      INT,
+    cooldown   FLOAT,
+    catch_coef FLOAT
 );
 
+
+DROP TABLE fish_chances;
 CREATE TABLE IF NOT EXISTS fish_chances
 (
     id           SERIAL PRIMARY KEY,
     fish_name    VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
-    rod_level    INT REFERENCES rod (id) ON DELETE CASCADE,
-    net_level    INT REFERENCES net (id) ON DELETE CASCADE,
-    catch_chance NUMERIC(3, 3)
+    rod_level    INT REFERENCES rod (level),
+    net_level    INT REFERENCES net (level),
+    catch_chance NUMERIC(4, 3)
 );
-
 
 CREATE TABLE IF NOT EXISTS stats
 (
@@ -80,10 +81,21 @@ CREATE TABLE IF NOT EXISTS leaderboard
     rank      INT
 );
 
-INSERT INTO player
-VALUES (2, 'name2', 0, 0, 2);
+CREATE TABLE IF NOT EXISTS promote_channels
+(
+    id   SERIAL PRIMARY KEY,
+    link VARCHAR(50) UNIQUE,
+    taps INT
+);
 
-insert into fish(fish_name, cost, experience) VALUES
-                                                  ('cod', 1, 3),
-                                                  ('salmon', 3, 5),
-                                                  ('puffer', 5, 10);
+INSERT INTO promote_channels
+VALUES (default, 'https://t.me/sobachki_real', 0),
+       (default, 'https://t.me/kotiki_real', 0);
+
+INSERT INTO player
+VALUES (2, 'name2', 0, 0, 2, 0);
+
+INSERT INTO fish(fish_name, cost, experience)
+VALUES ('cod', 1, 3),
+       ('salmon', 3, 5),
+       ('puffer', 5, 10);
