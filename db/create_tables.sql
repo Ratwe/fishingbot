@@ -84,14 +84,14 @@ CREATE TABLE IF NOT EXISTS leaderboard
     rank      INT
 );
 
-CREATE TABLE IF NOT EXISTS promote_channels
+CREATE TABLE IF NOT EXISTS promoted_channels
 (
     id   SERIAL PRIMARY KEY,
     link VARCHAR(50) UNIQUE,
     taps INT
 );
 
-INSERT INTO promote_channels
+INSERT INTO promoted_channels
 VALUES (default, 'https://t.me/sobachki_real', 0),
        (default, 'https://t.me/kotiki_real', 0);
 
