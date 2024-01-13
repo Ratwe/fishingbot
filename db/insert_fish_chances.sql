@@ -1,4 +1,4 @@
-CREATE OR REPLACE PROCEDURE insert_fishing_chances(count INT)
+CREATE OR REPLACE PROCEDURE insert_fish_chances(count INT)
     LANGUAGE plpgsql
 AS
 $$
@@ -41,5 +41,5 @@ END;
 $$;
 
 TRUNCATE fish_chances;
-call insert_fishing_chances(50);
+call insert_fish_chances(200);
 select * from fish_chances;

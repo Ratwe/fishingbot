@@ -1,17 +1,11 @@
-CREATE TYPE fish_data_type AS
-(
-    fish_name    TEXT,
-    catch_chance FLOAT
-);
-
 CREATE OR REPLACE PROCEDURE calc_level_hardness(count INT)
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
     i               INT;
-    rod_price       INT;
-    net_price       INT;
+    rod_price       DECIMAL(30, 0);
+    net_price       DECIMAL(30, 0);
     rod_cooldown    FLOAT;
     net_cooldown    FLOAT;
     net_catch_coef  FLOAT;
@@ -31,12 +25,18 @@ DECLARE
     cur_cost        FLOAT;
     cur_exp         FLOAT;
     exp_to_unlock   FLOAT;
+    new_level_time  FLOAT;
+    rod_time_to_buy FLOAT;
+    net_time_to_buy FLOAT;
 BEGIN
+    TRUNCATE level_hardness;
+    TRUNCATE levels;
+
     FOR i IN 1..count
         LOOP
-            rod_price := 30 * (1.2) ^ (i - 1);
+            rod_price := 20 * (1.15) ^ (i - 1);
             rod_cooldown := 5 * (0.97) ^ i; -- Adjusted the exponent
-            net_price := 150 * (1.2) ^ (i - 9) * 3;
+            net_price := 150 * (1.15) ^ (i - 9) * 3;
             net_cooldown := 100;
             net_catch_coef := 1 + i * 0.1;
 
@@ -75,23 +75,33 @@ BEGIN
             cost_per_second := avg_rod_cost + avg_net_cost;
             exp_per_second := avg_rod_exp + avg_net_exp;
 
-            exp_to_unlock = 120 * exp_per_second * 1.1 ^ (i - 1);
+            new_level_time := 20 * 1.05 ^ (i - 1);
+            exp_to_unlock = new_level_time * exp_per_second;
+
+            rod_time_to_buy = rod_price / cost_per_second;
+            net_time_to_buy = net_price / cost_per_second;
+
 
             INSERT INTO level_hardness
-            VALUES (i, rod_price, rod_cooldown, net_price, net_cooldown, net_catch_coef, avg_rod_cost, avg_rod_exp,
-                    avg_net_cost, avg_net_exp, cost_per_second, exp_per_second, exp_to_unlock);
+            VALUES (i, rod_price, rod_time_to_buy, rod_cooldown, net_price, net_time_to_buy, net_cooldown,
+                    net_catch_coef, avg_rod_cost, avg_rod_exp,
+                    avg_net_cost, avg_net_exp, cost_per_second, exp_per_second, exp_to_unlock, new_level_time);
+
+            INSERT INTO levels VALUES (i, exp_to_unlock);
         END LOOP;
+
 END;
 $$;
 
-
-
+DROP TABLE level_hardness;
 CREATE TABLE level_hardness
 (
     level           INT PRIMARY KEY,
-    rod_price       INT,
+    rod_price       DECIMAL(30, 0),
+    rod_time_to_buy FLOAT,
     rod_cooldown    FLOAT,
-    net_price       INT,
+    net_price       DECIMAL(30, 0),
+    net_time_to_buy FLOAT,
     net_cooldown    FLOAT,
     net_catch_coef  FLOAT,
     avg_rod_cost    FLOAT,
@@ -100,8 +110,12 @@ CREATE TABLE level_hardness
     avg_net_exp     FLOAT,
     cost_per_second FLOAT,
     exp_per_second  FLOAT,
-    exp_to_unlock   FLOAT
+    exp_to_unlock   DECIMAL(20, 0),
+    time_to_unlock  FLOAT
 );
 
+
 TRUNCATE level_hardness;
-CALL calc_level_hardness(50);
+CALL calc_level_hardness(200);
+SELECT level, rod_price, rod_time_to_buy, net_price, net_time_to_buy, cost_per_second, time_to_unlock
+FROM level_hardness;

@@ -4,14 +4,14 @@ AS
 $$
 DECLARE
     i INT;
-    current_price INT;
+    current_price DECIMAL(30,0);
     current_cooldown FLOAT;
 BEGIN
     INSERT INTO rod (level, price, cooldown)
     VALUES (0, 0, 5);
 
     FOR i IN 1..count LOOP
-        current_price := 30 * (1.2)^(i - 1);
+        current_price := 20 * (1.15)^(i - 1);
         current_cooldown := 5 * (0.97)^(i);
 
         INSERT INTO rod (level, price, cooldown)
@@ -21,5 +21,5 @@ END;
 $$;
 
 TRUNCATE table rod CASCADE;
-call insert_rod(50);
+call insert_rod(200);
 select * from rod;
