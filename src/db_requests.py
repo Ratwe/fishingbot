@@ -61,49 +61,48 @@ class DBConnector:
         return self.fetch_as_dicts(query)
 
     def get_player_rank(self, player_id):
-        query = '''
-        SELECT id, rank FROM leaderboard WHERE player_id = {player_id}
-        '''.format(player_id=player_id)
+        query = f'''
+        SELECT id, rank FROM leaderboard WHERE player_id = {player_id}'''
         return self.fetch_as_dicts(query)
 
     def get_player_fish_stored(self, player_id):
-        query = '''
+        query = f'''
         SELECT fish_name, stored_amount
         FROM player
         JOIN storage ON player.player_id = storage.player_id
         JOIN fish_stored ON storage.id = fish_stored.storage_id
         WHERE player.player_id = {player_id};
-        '''.format(player_id=player_id)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_player_storage(self, player_id):
-        query = '''
+        query = f'''
         SELECT storage_id, fish_name, stored_amount
         FROM player
         JOIN storage ON player.player_id = storage.player_id
         JOIN fish_stored ON storage.id = fish_stored.storage_id
         WHERE player.player_id = {player_id}
-        '''.format(player_id=player_id)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_player_fish_caught(self, player_id):
-        query = '''
+        query = f'''
         SELECT fish_name, caught_amount
         FROM player
         JOIN stats ON player.player_id = stats.player_id
         JOIN fish_caught ON stats.id = fish_caught.stats_id
         WHERE player.player_id = {player_id};
-        '''.format(player_id=player_id)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_player_stats(self, player_id):
-        query = '''
+        query = f'''
         SELECT level, experience, stats.id as stats_id, total_earning, balance, fish_name, caught_amount
         FROM player
         JOIN stats ON player.player_id = stats.player_id
         JOIN fish_caught ON stats.id = fish_caught.stats_id
         WHERE player.player_id = {player_id};
-        '''.format(player_id=player_id)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_promoted_channels(self):
@@ -113,16 +112,16 @@ class DBConnector:
         return self.fetch_as_dicts(query)
 
     def get_fish(self, fish_name):
-        query = '''
+        query = f'''
         SELECT * FROM fish WHERE fish_name = '{fish_name}'
-        '''.format(fish_name=fish_name)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_player_net(self, player_id):
-        query = '''
+        query = f'''
         SELECT * FROM net
         WHERE level = (SELECT player.net_level FROM player WHERE player_id = {player_id});
-        '''.format(player_id=player_id)
+        '''
         return self.fetch_as_dicts(query)
 
     def get_levels(self):
@@ -130,22 +129,21 @@ class DBConnector:
         return self.fetch_as_dicts(query)
 
     def get_level_exp_required(self, level):
-        query = '''SELECT exp_required FROM levels WHERE level = {level}
-        '''.format(level=level)
+        query = f'''SELECT exp_required FROM levels WHERE level = {level}'''
         return self.fetch_as_dicts(query)
 
     def update_player_level(self, player_id, level):
-        query = '''UPDATE player
+        query = f'''UPDATE player
                 SET level = {level}
                 WHERE player_id = {player_id}
-                '''.format(player_id=player_id, level=level)
+                '''
         self.execute_query(query)
 
     def update_player_experience(self, player_id, experience):
-        query = '''UPDATE player
+        query = f'''UPDATE player
                 SET experience = {experience}
                 WHERE player_id = {player_id}
-                '''.format(player_id=player_id, experience=experience)
+                '''
         self.execute_query(query)
 
     def get_fish_caught_id(self, player_id, fish_name):
