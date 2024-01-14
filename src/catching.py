@@ -22,6 +22,31 @@ def calc_tool_catch_amount(player_id, tool):
     return catch_amount
 
 
+def translate_fish_name(fish_name):
+    match fish_name:
+        case 'cod':
+            fish_name = 'треска'
+        case 'salmon':
+            fish_name = 'лосось'
+        case 'puffer':
+            fish_name = 'иглобрюх'
+
+    return fish_name
+
+
+def catch_result_message(fish_caught):
+    message = '**Вы поймали:**'
+    for fish in fish_caught:
+        caught_amount = fish["caught_amount"]
+        if caught_amount > 0:
+            fish_name = translate_fish_name(fish["fish_name"])
+            message += f"\n- {caught_amount} {fish_name}"
+    exp = calc_caught_fish_experience(fish_caught)
+    message += f"\nПолучено {exp} XP"
+
+    return message
+
+
 def calc_tool_fish_caught(player_id, tool="rod"):
     fish_chances = None
     if tool == "rod":
@@ -40,6 +65,7 @@ def calc_tool_fish_caught(player_id, tool="rod"):
 
     return fish_caught
 
+
 def get_fish_experience(fish_name):
     fish = db_connector.get_fish(fish_name)
     experience = fish[0]["experience"]
@@ -55,8 +81,6 @@ def get_fish_cost(fish_name):
 def calc_caught_fish_experience(fish_caught):
     experience = 0
     for fish in fish_caught:
-        print(fish)
-
         fish_name = fish["fish_name"]
         caught_amount = fish["caught_amount"]
         fish_experience = get_fish_experience(fish_name)
@@ -78,14 +102,16 @@ def calc_caught_fish_cost(fish_caught):
 
 def add_player_experience(player_id, amount):
     stats = db_connector.get_player_stats(player_id)
-    experience = stats[0]["experience"] + amount
+    experience = int(stats[0]["experience"] + amount)
     level = stats[0]["level"]
 
     exp_required = int(db_connector.get_level_exp_required(level + 1)[0]["exp_required"])
-    while experience >= exp_required:
+    while int(experience) >= int(exp_required):
         experience -= exp_required
         level += 1
-        exp_required = db_connector.get_level_exp_required(level + 1)
+        # сообщение о повышении уровня в диалог
+        print(f"Уровень повышен до {level}!")
+        exp_required = db_connector.get_level_exp_required(level + 1)[0]["exp_required"]
 
     db_connector.update_player_level(player_id, level)
     db_connector.update_player_experience(player_id, experience)
@@ -121,11 +147,12 @@ def update_storage(player_id, fish_caught):
 
 def player_catch_fish(player_id):
     fish_caught = calc_tool_fish_caught(player_id, tool="rod")
+    print(catch_result_message(fish_caught))
     experience_gain = calc_caught_fish_experience(fish_caught)
     add_player_experience(player_id, experience_gain)
 
     update_stats(player_id, fish_caught)
     update_storage(player_id, fish_caught)
 
+
 player_catch_fish(2)
-sleep(3)
