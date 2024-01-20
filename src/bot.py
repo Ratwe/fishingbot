@@ -26,7 +26,7 @@ class FishingBot:
     def read_texts(self):
         cwd = os.getcwd()  # Get the current working directory (cwd)
         print(cwd)
-        with open("./text/parsed_texts.yml", "r", encoding="utf-8") as file:
+        with open("text/parsed_texts.yml", "r", encoding="utf-8") as file:
             texts = yaml.safe_load(file)
         return texts
 
@@ -35,7 +35,7 @@ class FishingBot:
 
     def read_config(self):
         config = configparser.ConfigParser()
-        config.read("./settings/config.ini")
+        config.read("settings/config.ini")
         return config
 
     async def start(self, update: Update, context):
