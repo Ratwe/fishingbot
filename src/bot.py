@@ -12,7 +12,7 @@ from db_requests import DBConnector
 class FishingBot:
     def __init__(self):
         self.token = None
-        self.messages = self.read_messages()
+        self.messages = self.read_texts()
         self.application = self.setup_bot()
         self.create_logs_directory()  # Добавляем создание каталога
         self.setup_logging()
