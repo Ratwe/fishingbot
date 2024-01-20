@@ -27,7 +27,7 @@ CALL insert_net(200);
 DROP TABLE player CASCADE;
 CREATE TABLE IF NOT EXISTS player
 (
-    player_id  INT PRIMARY KEY,
+    player_id  BIGINT PRIMARY KEY,
     name       VARCHAR(50),
     rod_level  INT REFERENCES rod (level),
     net_level  INT REFERENCES net (level),
