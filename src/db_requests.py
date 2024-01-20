@@ -162,6 +162,12 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
+    def create_player(self, player_id, player_name):
+        query = f'''INSERT INTO player
+                VALUES ({player_id}, '{player_name}', 0, 0, 0, 0),
+                '''
+        self.execute_query(query)
+
     def get_fish_stored_id(self, player_id, fish_name):
         query = f'''SELECT fish_stored.id
                 FROM fish_stored
