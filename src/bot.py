@@ -17,6 +17,7 @@ class FishingBot:
         self.create_logs_directory()  # Добавляем создание каталога
         self.setup_logging()
         self.db_connector = DBConnector()
+        print("Im alive!")
 
     def create_logs_directory(self):
         logs_directory = '../logs'
@@ -24,8 +25,6 @@ class FishingBot:
             os.makedirs(logs_directory)
 
     def read_texts(self):
-        cwd = os.getcwd()  # Get the current working directory (cwd)
-        print(cwd)
         with open("text/parsed_texts.yml", "r", encoding="utf-8") as file:
             texts = yaml.safe_load(file)
         return texts
