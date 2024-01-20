@@ -24,6 +24,8 @@ class FishingBot:
             os.makedirs(logs_directory)
 
     def read_texts(self):
+        cwd = os.getcwd()  # Get the current working directory (cwd)
+        print(cwd)
         with open("parsed_texts.yml", "r", encoding="utf-8") as file:
             texts = yaml.safe_load(file)
         return texts
