@@ -6,7 +6,7 @@ import yaml
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from src.db_requests import DBConnector
+from db_requests import DBConnector
 
 
 class FishingBot:
@@ -45,6 +45,14 @@ class FishingBot:
             reply_markup=None,
         )
 
+    async def fish(self, update: Update, context):
+        user = update.effective_user
+
+        await update.message.reply_html(
+            self.get_text("bot_start").format(user.mention_html()),
+            reply_markup=None,
+        )
+
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
 
@@ -60,6 +68,7 @@ class FishingBot:
 
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("fish", self.help_command))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
