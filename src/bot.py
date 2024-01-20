@@ -38,6 +38,7 @@ class FishingBot:
         return config
 
     async def start(self, update: Update, context):
+        print("In start")
         user = update.effective_user
         print(f"Создание игрока {user.id}, {user.username}")
         self.db_connector.create_player(user.id, user.username)
