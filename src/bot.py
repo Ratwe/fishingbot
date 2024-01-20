@@ -40,12 +40,14 @@ class FishingBot:
     async def start(self, update: Update, context):
         print("In start")
         user = update.effective_user
+        print("Создание игрока")
         print(f"Создание игрока {user.id}, {user.username}")
         self.db_connector.create_player(user.id, user.username)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
             reply_markup=None,
         )
+        print("Игрок создан")
 
     async def fish(self, update: Update, context):
         user = update.effective_user
