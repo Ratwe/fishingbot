@@ -1,10 +1,12 @@
+import configparser
+import logging
 import os
 
-from telegram import ForceReply, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-import configparser
 import yaml
-import logging
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+
+from src.db_requests import DBConnector
 
 
 class FishingBot:
@@ -14,18 +16,17 @@ class FishingBot:
         self.application = self.setup_bot()
         self.create_logs_directory()  # Добавляем создание каталога
         self.setup_logging()
-
+        self.db_connector = DBConnector()
 
     def create_logs_directory(self):
         logs_directory = '../logs'
         if not os.path.exists(logs_directory):
             os.makedirs(logs_directory)
 
-
-    def read_messages(self):
+    def read_texts(self):
         with open("../text/parsed_texts.yml", "r", encoding="utf-8") as file:
-            messages = yaml.safe_load(file)
-        return messages
+            texts = yaml.safe_load(file)
+        return texts
 
     def get_text(self, var):
         return self.messages[var]
@@ -37,6 +38,8 @@ class FishingBot:
 
     async def start(self, update: Update, context):
         user = update.effective_user
+        print(f"Создание игрока {user.id}, {user.username}")
+        self.db_connector.create_player(user.id, user.username)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
             reply_markup=None,
@@ -47,6 +50,7 @@ class FishingBot:
 
     async def echo(self, update: Update, context):
         await update.message.reply_text("Не понимаю. Блокирую!")
+
 
     def setup_bot(self):
         config = self.read_config()
