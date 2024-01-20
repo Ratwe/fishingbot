@@ -1,6 +1,5 @@
 import configparser
 import random
-from time import sleep
 
 from db_requests import DBConnector
 
