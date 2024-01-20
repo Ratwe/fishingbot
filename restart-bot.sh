@@ -8,7 +8,8 @@ check_bot_status() {
 
 start_bot() {
     echo "Запуск бота..."
-    python3 "$BOT_PATH"
+    cd $(dirname "$BOT_PATH")
+    python3 "$(basename "$BOT_PATH")"
 }
 
 restart_bot() {
