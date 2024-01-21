@@ -1,9 +1,6 @@
 import configparser
 import random
 
-from db_requests import DBConnector
-
-
 def calc_tool_catch_amount(player_id, db_connector, tool):
     player_stats = db_connector.get_player_stats(player_id)
     player_level = int(player_stats[0]["level"])
@@ -32,7 +29,7 @@ def translate_fish_name(fish_name):
 
 
 def catch_result_message(fish_caught, db_connector):
-    message = '**Вы поймали:**'
+    message = '*Вы поймали:*'
     for fish in fish_caught:
         caught_amount = fish["caught_amount"]
         if caught_amount > 0:
@@ -97,17 +94,21 @@ def calc_caught_fish_cost(fish_caught, db_connector):
     return cost
 
 
-def add_player_experience(player_id, amount, db_connector):
+async def add_player_experience(player_id, amount, bot):
+    db_connector = bot.db_connector
     stats = db_connector.get_player_stats(player_id)
     experience = int(stats[0]["experience"] + amount)
     level = stats[0]["level"]
 
     exp_required = int(db_connector.get_level_exp_required(level + 1)[0]["exp_required"])
-    while int(experience) >= int(exp_required):
+    while int(experience) >= int(exp_required) / 10: #$!!!!!!
         experience -= exp_required
         level += 1
         # сообщение о повышении уровня в диалог
-        print(f"Уровень повышен до {level}!")
+        print(bot)
+        await bot.send_message(player_id, f"Уровень повышен до {level}!")
+
+        print(f"Уровень игрока {player_id} повышен до {level}!")
         exp_required = db_connector.get_level_exp_required(level + 1)[0]["exp_required"]
 
     db_connector.update_player_level(player_id, level)
@@ -142,17 +143,13 @@ def update_storage(player_id, fish_caught, db_connector):
         db_connector.update_fish_stored(fish_stored_id, cur_fish_stored_amount + fish_stored_gain)
 
 
-def player_catch_fish(player_id, db_connector):
-    print(1)
-    fish_caught = calc_tool_fish_caught(player_id, db_connector, tool="rod")
-    print(2)
-    experience_gain = calc_caught_fish_experience(fish_caught, db_connector)
-    print(3)
-    add_player_experience(player_id, experience_gain, db_connector)
+async def player_catch_fish(player_id, bot):
+    print(bot.token)
+    fish_caught = calc_tool_fish_caught(player_id, bot.db_connector, tool="rod")
+    experience_gain = calc_caught_fish_experience(fish_caught, bot.db_connector)
+    await add_player_experience(player_id, experience_gain, bot)
 
-    print(4)
-    update_stats(player_id, fish_caught, db_connector)
-    print(5)
-    update_storage(player_id, fish_caught, db_connector)
+    update_stats(player_id, fish_caught, bot.db_connector)
+    update_storage(player_id, fish_caught, bot.db_connector)
 
-    return catch_result_message(fish_caught, db_connector)
+    return catch_result_message(fish_caught, bot.db_connector)
