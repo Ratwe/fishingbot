@@ -24,10 +24,14 @@ class DBConnector:
         return config
 
     def execute_query(self, query):
-        cursor = self.conn.cursor()
-        cursor.execute(query)
-        cursor.close()
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            # Получение результатов запроса
+            cursor.close()
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error executing query: {str(e)}")
 
     def fetch_as_dicts(self, query):
         cursor = self.conn.cursor()
@@ -162,7 +166,7 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
-    def create_player(self, player_id, player_name):
+    def insert_player(self, player_id, player_name):
         query = f'''INSERT INTO player
                 VALUES ({player_id}, '{player_name}', 0, 0, 0, 0);
                 '''

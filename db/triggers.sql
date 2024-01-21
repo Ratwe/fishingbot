@@ -35,3 +35,32 @@ CREATE TRIGGER insert_player_trigger
     ON player
     FOR EACH ROW
 EXECUTE FUNCTION insert_player();
+
+CREATE OR REPLACE FUNCTION delete_player()
+    RETURNS TRIGGER AS
+$$
+BEGIN
+    DELETE FROM leaderboard
+    WHERE player_id = OLD.player_id;
+
+    DELETE FROM fish_caught
+    WHERE stats_id IN (SELECT id FROM stats WHERE player_id = OLD.player_id);
+
+    DELETE FROM stats
+    WHERE player_id = OLD.player_id;
+
+    DELETE FROM fish_stored
+    WHERE storage_id IN (SELECT id FROM storage WHERE player_id = OLD.player_id);
+
+    DELETE FROM storage
+    WHERE player_id = OLD.player_id;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER delete_player_trigger
+    BEFORE DELETE
+    ON player
+    FOR EACH ROW
+EXECUTE FUNCTION delete_player();

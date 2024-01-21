@@ -3,10 +3,8 @@ import random
 
 from db_requests import DBConnector
 
-db_connector = DBConnector()
 
-
-def calc_tool_catch_amount(player_id, tool):
+def calc_tool_catch_amount(player_id, db_connector, tool):
     player_stats = db_connector.get_player_stats(player_id)
     player_level = int(player_stats[0]["level"])
     config = configparser.ConfigParser()
@@ -33,27 +31,27 @@ def translate_fish_name(fish_name):
     return fish_name
 
 
-def catch_result_message(fish_caught):
+def catch_result_message(fish_caught, db_connector):
     message = '**Вы поймали:**'
     for fish in fish_caught:
         caught_amount = fish["caught_amount"]
         if caught_amount > 0:
             fish_name = translate_fish_name(fish["fish_name"])
             message += f"\n- {caught_amount} {fish_name}"
-    exp = calc_caught_fish_experience(fish_caught)
+    exp = calc_caught_fish_experience(fish_caught, db_connector)
     message += f"\nПолучено {exp} XP"
 
     return message
 
 
-def calc_tool_fish_caught(player_id, tool="rod"):
+def calc_tool_fish_caught(player_id, db_connector, tool="rod"):
     fish_chances = None
     if tool == "rod":
         fish_chances = db_connector.get_player_rod_fish_catch_chances(player_id)
     elif tool == "net":
         fish_chances = db_connector.get_player_net_fish_catch_chances(player_id)
 
-    catch_amount = calc_tool_catch_amount(player_id, tool=tool)
+    catch_amount = calc_tool_catch_amount(player_id, db_connector, tool=tool)
 
     fish_caught = []
     for fish_chance in fish_chances:
@@ -65,41 +63,41 @@ def calc_tool_fish_caught(player_id, tool="rod"):
     return fish_caught
 
 
-def get_fish_experience(fish_name):
+def get_fish_experience(fish_name, db_connector):
     fish = db_connector.get_fish(fish_name)
     experience = fish[0]["experience"]
     return experience
 
 
-def get_fish_cost(fish_name):
+def get_fish_cost(fish_name, db_connector):
     fish = db_connector.get_fish(fish_name)
     cost = fish[0]["cost"]
     return cost
 
 
-def calc_caught_fish_experience(fish_caught):
+def calc_caught_fish_experience(fish_caught, db_connector):
     experience = 0
     for fish in fish_caught:
         fish_name = fish["fish_name"]
         caught_amount = fish["caught_amount"]
-        fish_experience = get_fish_experience(fish_name)
+        fish_experience = get_fish_experience(fish_name, db_connector)
         experience += caught_amount * fish_experience
 
     return experience
 
 
-def calc_caught_fish_cost(fish_caught):
+def calc_caught_fish_cost(fish_caught, db_connector):
     cost = 0
     for fish in fish_caught:
         fish_name = fish["fish_name"]
         caught_amount = fish["caught_amount"]
-        fish_cost = get_fish_cost(fish_name)
+        fish_cost = get_fish_cost(fish_name, db_connector)
         cost += caught_amount * fish_cost
 
     return cost
 
 
-def add_player_experience(player_id, amount):
+def add_player_experience(player_id, amount, db_connector):
     stats = db_connector.get_player_stats(player_id)
     experience = int(stats[0]["experience"] + amount)
     level = stats[0]["level"]
@@ -116,7 +114,7 @@ def add_player_experience(player_id, amount):
     db_connector.update_player_experience(player_id, experience)
 
 
-def update_stats(player_id, fish_caught):
+def update_stats(player_id, fish_caught, db_connector):
     for fish in fish_caught:
         fish_name = fish["fish_name"]
         fish_caught_gain = fish["caught_amount"]
@@ -130,7 +128,7 @@ def update_stats(player_id, fish_caught):
         db_connector.update_fish_caught(fish_caught_id, cur_fish_caught_amount + fish_caught_gain)
 
 
-def update_storage(player_id, fish_caught):
+def update_storage(player_id, fish_caught, db_connector):
     for fish in fish_caught:
         fish_name = fish["fish_name"]
         fish_stored_gain = fish["caught_amount"]
@@ -144,14 +142,17 @@ def update_storage(player_id, fish_caught):
         db_connector.update_fish_stored(fish_stored_id, cur_fish_stored_amount + fish_stored_gain)
 
 
-def player_catch_fish(player_id):
-    fish_caught = calc_tool_fish_caught(player_id, tool="rod")
-    print(catch_result_message(fish_caught))
-    experience_gain = calc_caught_fish_experience(fish_caught)
-    add_player_experience(player_id, experience_gain)
+def player_catch_fish(player_id, db_connector):
+    print(1)
+    fish_caught = calc_tool_fish_caught(player_id, db_connector, tool="rod")
+    print(2)
+    experience_gain = calc_caught_fish_experience(fish_caught, db_connector)
+    print(3)
+    add_player_experience(player_id, experience_gain, db_connector)
 
-    update_stats(player_id, fish_caught)
-    update_storage(player_id, fish_caught)
+    print(4)
+    update_stats(player_id, fish_caught, db_connector)
+    print(5)
+    update_storage(player_id, fish_caught, db_connector)
 
-
-player_catch_fish(2)
+    return catch_result_message(fish_caught, db_connector)

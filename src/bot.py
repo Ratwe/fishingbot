@@ -7,6 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
+from src import catching
 
 
 class FishingBot:
@@ -17,7 +18,7 @@ class FishingBot:
         self.create_logs_directory()  # Добавляем создание каталога
         self.setup_logging()
         self.db_connector = DBConnector()
-        print("Im alive!")
+        print("Bot inited!")
 
     def create_logs_directory(self):
         logs_directory = '../logs'
@@ -38,23 +39,20 @@ class FishingBot:
         return config
 
     async def start(self, update: Update, context):
-        print("In start")
+        print("In /start")
         user = update.effective_user
-        print(f"Create player {user.id}, {user.username}")
-        self.db_connector.create_player(user.id, user.username)
+        print(f"Trying to insert player {user.id}, {user.username}")
+        self.db_connector.insert_player(user.id, user.username)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
             reply_markup=None,
         )
-        print("Игрок создан")
 
     async def fish(self, update: Update, context):
         user = update.effective_user
-
-        await update.message.reply_html(
-            self.get_text("bot_start").format(user.mention_html()),
-            reply_markup=None,
-        )
+        print("In /fish")
+        result = catching.player_catch_fish(user.id, self.db_connector)
+        await update.message.reply_text(result, parse_mode="Markdown")
 
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
@@ -71,7 +69,7 @@ class FishingBot:
 
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
-        application.add_handler(CommandHandler("fish", self.help_command))
+        application.add_handler(CommandHandler("fish", self.fish))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
