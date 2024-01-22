@@ -54,8 +54,9 @@ class FishingBot:
     async def fish(self, update: Update, context):
         user = update.effective_user
         result = await catching.player_catch_fish(user.id, update.message.date, self)
-        print(result)
-        await update.message.reply_text(result, parse_mode="Markdown")
+        if result:
+            print(result)
+            await update.message.reply_text(result, parse_mode="Markdown")
 
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
