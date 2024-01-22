@@ -10,7 +10,7 @@ DECLARE
 BEGIN
     FOR i IN 0..count
         LOOP
-            current_price := 150 * (1.15) ^ (i - 9) * 3;
+            current_price := 600 * (1.15) ^ (i - 9) * 3;
             current_cooldown := 100;
             current_catch_coef := 1 + (i) * 0.1;
 

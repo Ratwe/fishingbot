@@ -1,5 +1,8 @@
 import configparser
+import datetime
+
 import psycopg2
+
 
 class DBConnector:
 
@@ -24,10 +27,14 @@ class DBConnector:
         return config
 
     def execute_query(self, query):
-        cursor = self.conn.cursor()
-        cursor.execute(query)
-        cursor.close()
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            # Получение результатов запроса
+            cursor.close()
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error executing query: {str(e)}")
 
     def fetch_as_dicts(self, query):
         cursor = self.conn.cursor()
@@ -36,7 +43,6 @@ class DBConnector:
         result = [dict(zip(columns, row)) for row in cursor.fetchall()]
         cursor.close()
         return result
-
 
     def get_player_rod_fish_catch_chances(self, player_id):
         query = f'''
@@ -53,6 +59,23 @@ class DBConnector:
         WHERE net_level = (SELECT player.net_level FROM player WHERE player_id = {player_id});
         '''
         return self.fetch_as_dicts(query)
+
+    def get_player_last_usages(self, player_id):
+        query = f'''
+        SELECT *
+        FROM last_usages
+        WHERE player_id = {player_id};
+        '''
+        return self.fetch_as_dicts(query)
+
+    def update_tool_last_use(self, player_id, tool):
+        time = datetime.datetime.now(datetime.timezone.utc)
+        query = f'''
+        UPDATE last_usages
+        SET {tool}_last_use = '{time}'
+        WHERE player_id = {player_id}
+        '''
+        self.execute_query(query)
 
     def get_leaderboard(self):
         query = '''
@@ -124,6 +147,13 @@ class DBConnector:
         '''
         return self.fetch_as_dicts(query)
 
+    def get_player_rod(self, player_id):
+        query = f'''
+        SELECT * FROM rod
+        WHERE level = (SELECT player.rod_level FROM player WHERE player_id = {player_id});
+        '''
+        return self.fetch_as_dicts(query)
+
     def get_levels(self):
         query = '''SELECT * FROM levels'''
         return self.fetch_as_dicts(query)
@@ -162,9 +192,9 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
-    def create_player(self, player_id, player_name):
+    def insert_player(self, player_id, player_username):
         query = f'''INSERT INTO player
-                VALUES ({player_id}, '{player_name}', 0, 0, 0, 0);
+                VALUES ({player_id}, '{player_username}', 0, 0, 0, 0);
                 '''
         self.execute_query(query)
 

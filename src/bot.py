@@ -3,21 +3,23 @@ import logging
 import os
 
 import yaml
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
+from src import catching
 
 
 class FishingBot:
     def __init__(self):
         self.token = None
         self.messages = self.read_texts()
-        self.application = self.setup_bot()
+        self.application = self.get_application()
+        self.application = self.setup_application(self.application)
         self.create_logs_directory()  # Добавляем создание каталога
         self.setup_logging()
         self.db_connector = DBConnector()
-        print("Im alive!")
+        print("Bot inited!")
 
     def create_logs_directory(self):
         logs_directory = '../logs'
@@ -29,6 +31,9 @@ class FishingBot:
             texts = yaml.safe_load(file)
         return texts
 
+    async def send_message(self, user_id, message):
+        await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
+
     def get_text(self, var):
         return self.messages[var]
 
@@ -38,23 +43,19 @@ class FishingBot:
         return config
 
     async def start(self, update: Update, context):
-        print("In start")
         user = update.effective_user
-        print(f"Create player {user.id}, {user.username}")
-        self.db_connector.create_player(user.id, user.username)
+        print(f"Trying to insert player {user.id}, {user.username}")
+        self.db_connector.insert_player(user.id, user.username)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
             reply_markup=None,
         )
-        print("Игрок создан")
 
     async def fish(self, update: Update, context):
         user = update.effective_user
-
-        await update.message.reply_html(
-            self.get_text("bot_start").format(user.mention_html()),
-            reply_markup=None,
-        )
+        result = await catching.player_catch_fish(user.id, update.message.date, self)
+        print(result)
+        await update.message.reply_text(result, parse_mode="Markdown")
 
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
@@ -62,20 +63,18 @@ class FishingBot:
     async def echo(self, update: Update, context):
         await update.message.reply_text("Не понимаю. Блокирую!")
 
-
-    def setup_bot(self):
+    def get_application(self):
         config = self.read_config()
-        token = config["Bot"]["token"]
+        self.token = config["Bot"]["token"]
+        return Application.builder().token(self.token).build()
 
-        application = Application.builder().token(token).build()
-
+    def setup_application(self, application):
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
-        application.add_handler(CommandHandler("fish", self.help_command))
+        application.add_handler(CommandHandler("fish", self.fish))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
-
         return application
 
     def setup_logging(self):
