@@ -32,8 +32,6 @@ class FishingBot:
         return texts
 
     async def send_message(self, user_id, message):
-        print("sm token = ", self.token)
-        print("sm bot = ", self)
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
 
     def get_text(self, var):
@@ -45,7 +43,6 @@ class FishingBot:
         return config
 
     async def start(self, update: Update, context):
-        print("In /start")
         user = update.effective_user
         print(f"Trying to insert player {user.id}, {user.username}")
         self.db_connector.insert_player(user.id, user.username)
@@ -56,10 +53,7 @@ class FishingBot:
 
     async def fish(self, update: Update, context):
         user = update.effective_user
-        print("In /fish")
-        print("Self = ", self)
-        print("Token = ", self.token)
-        result = await catching.player_catch_fish(user.id, self)
+        result = await catching.player_catch_fish(user.id, update.message.date, self)
         print(result)
         await update.message.reply_text(result, parse_mode="Markdown")
 

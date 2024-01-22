@@ -1,6 +1,9 @@
 import configparser
 import random
 
+from datetime import datetime
+
+
 def calc_tool_catch_amount(player_id, db_connector, tool):
     player_stats = db_connector.get_player_stats(player_id)
     player_level = int(player_stats[0]["level"])
@@ -39,6 +42,33 @@ def catch_result_message(fish_caught, db_connector):
     message += f"\nПолучено {exp} XP"
 
     return message
+
+
+def can_player_fish(player_id, msg_time, db_connector, tool="rod"):
+    last_usages = db_connector.get_player_last_usages(player_id)
+    last_usage: datetime = None
+    cooldown: int = None
+    if tool == "rod":
+        rod = db_connector.get_player_rod(player_id)
+        cooldown = rod[0]["cooldown"]
+        last_usage = last_usages[0]["rod_last_use"]
+    elif tool == "net":
+        net = db_connector.get_player_net(player_id)
+        cooldown = net.cooldown
+        last_usage = last_usages[0]["net_last_use"]
+
+    if last_usage is not None:
+        msg_time_str = msg_time.strftime('%Y-%m-%d %H:%M:%S')
+        last_usage_str = last_usage.strftime('%Y-%m-%d %H:%M:%S')
+        msg_time = datetime.strptime(msg_time_str, "%Y-%m-%d %H:%M:%S")
+        last_usage = datetime.strptime(last_usage_str, "%Y-%m-%d %H:%M:%S")
+
+        diff = (msg_time - last_usage).total_seconds()
+
+        if diff < cooldown:
+            return False
+
+    return True
 
 
 def calc_tool_fish_caught(player_id, db_connector, tool="rod"):
@@ -101,13 +131,12 @@ async def add_player_experience(player_id, amount, bot):
     level = stats[0]["level"]
 
     exp_required = int(db_connector.get_level_exp_required(level + 1)[0]["exp_required"])
-    while int(experience) >= int(exp_required) / 10: #$!!!!!!
+    while int(experience) >= int(exp_required):
         experience -= exp_required
         level += 1
         # сообщение о повышении уровня в диалог
         print(bot)
         await bot.send_message(player_id, f"Уровень повышен до {level}!")
-
         print(f"Уровень игрока {player_id} повышен до {level}!")
         exp_required = db_connector.get_level_exp_required(level + 1)[0]["exp_required"]
 
@@ -143,13 +172,16 @@ def update_storage(player_id, fish_caught, db_connector):
         db_connector.update_fish_stored(fish_stored_id, cur_fish_stored_amount + fish_stored_gain)
 
 
-async def player_catch_fish(player_id, bot):
-    print(bot.token)
-    fish_caught = calc_tool_fish_caught(player_id, bot.db_connector, tool="rod")
-    experience_gain = calc_caught_fish_experience(fish_caught, bot.db_connector)
-    await add_player_experience(player_id, experience_gain, bot)
+async def player_catch_fish(player_id, msg_date: datetime, bot):
+    if can_player_fish(player_id, msg_date, bot.db_connector, tool="rod"):
+        fish_caught = calc_tool_fish_caught(player_id, bot.db_connector, tool="rod")
+        experience_gain = calc_caught_fish_experience(fish_caught, bot.db_connector)
+        await add_player_experience(player_id, experience_gain, bot)
 
-    update_stats(player_id, fish_caught, bot.db_connector)
-    update_storage(player_id, fish_caught, bot.db_connector)
+        update_stats(player_id, fish_caught, bot.db_connector)
+        update_storage(player_id, fish_caught, bot.db_connector)
+        bot.db_connector.update_tool_last_use(player_id, tool="rod")
+    else:
+        return "Но-но-но, мистер фиш!"
 
     return catch_result_message(fish_caught, bot.db_connector)

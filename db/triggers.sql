@@ -2,11 +2,14 @@ CREATE OR REPLACE FUNCTION insert_player()
     RETURNS TRIGGER AS
 $$
 DECLARE
-    stats_id int;
-    storage_id int;
+    stats_id   INT;
+    storage_id INT;
 BEGIN
     INSERT INTO leaderboard(player_id, rank)
     VALUES (NEW.player_id, NULL);
+
+    INSERT INTO last_usages(player_id, rod_last_use, net_last_use)
+    VALUES (NEW.player_id, NULL, NULL);
 
     INSERT INTO stats(player_id, balance, total_earning)
     VALUES (NEW.player_id, 0, 0)
@@ -30,6 +33,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+drop trigger insert_player_trigger on player;
 CREATE TRIGGER insert_player_trigger
     AFTER INSERT
     ON player
@@ -40,26 +44,38 @@ CREATE OR REPLACE FUNCTION delete_player()
     RETURNS TRIGGER AS
 $$
 BEGIN
-    DELETE FROM leaderboard
+    DELETE
+    FROM leaderboard
     WHERE player_id = OLD.player_id;
 
-    DELETE FROM fish_caught
+
+    DELETE
+    FROM last_usages
+    WHERE player_id = old.player_id;
+
+    DELETE
+    FROM fish_caught
     WHERE stats_id IN (SELECT id FROM stats WHERE player_id = OLD.player_id);
 
-    DELETE FROM stats
+    DELETE
+    FROM stats
     WHERE player_id = OLD.player_id;
 
-    DELETE FROM fish_stored
+    DELETE
+    FROM fish_stored
     WHERE storage_id IN (SELECT id FROM storage WHERE player_id = OLD.player_id);
 
-    DELETE FROM storage
+    DELETE
+    FROM storage
     WHERE player_id = OLD.player_id;
 
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER delete_player_trigger
+drop trigger delete_player_trigger on player;
+
+CREATE trigger delete_player_trigger
     BEFORE DELETE
     ON player
     FOR EACH ROW

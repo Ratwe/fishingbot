@@ -121,6 +121,15 @@ CREATE TABLE levels
     exp_required DECIMAL(20, 0)
 );
 
+drop table last_usages;
+create table last_usages
+(
+    id serial PRIMARY KEY,
+    player_id bigint REFERENCES player(player_id) on delete CASCADE,
+    rod_last_use timestamp,
+    net_last_use timestamp
+);
+
 INSERT INTO promoted_channels
 VALUES (default, 'https://t.me/sobachki_real', 0),
        (default, 'https://t.me/kotiki_real', 0);
