@@ -34,10 +34,19 @@ class FishingBot:
     async def send_message(self, user_id, message):
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
 
-    async def send_cooldown_message(self, user_id, cooldown):
-        keyboard = [[KeyboardButton('/fish')]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-        await self.application.bot.send_message(chat_id=user_id, text=f"Перезарядка удочки: {cooldown:.0f} секунд(ы)!",
+    async def send_cooldown_message(self, user_id, cooldown, tool="rod"):
+        tool_name = None
+        reply_markup = None
+        if tool == "rod":
+            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('/fish')]], resize_keyboard=True,
+                                               one_time_keyboard=True)
+            tool_name = "удочки"
+        elif tool == "net":
+            tool_name = "сети"
+            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('/net')]], resize_keyboard=True,
+                                               one_time_keyboard=True)
+        await self.application.bot.send_message(chat_id=user_id,
+                                                text=f"Перезарядка {tool_name}: {cooldown:.0f} секунд(ы)!",
                                                 parse_mode="Markdown",
                                                 reply_markup=reply_markup)
 
@@ -62,10 +71,17 @@ class FishingBot:
 
     async def fish(self, update: Update, context):
         user = update.effective_user
-        result = await catching.get_player_catch_fish(user.id, update.message.date, self)
+        result = await catching.get_player_catch_fish(user.id, update.message.date, self, tool="rod")
         if result:
-            print(result)
             keyboard = [[KeyboardButton('/fish')]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+            await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
+
+    async def net(self, update: Update, context):
+        user = update.effective_user
+        result = await catching.get_player_catch_fish(user.id, update.message.date, self, tool="net")
+        if result:
+            keyboard = [[KeyboardButton('/net')]]
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
             await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
 
@@ -99,6 +115,7 @@ class FishingBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("fish", self.fish))
+        application.add_handler(CommandHandler("net", self.net))
         application.add_handler(CommandHandler("storage", self.storage))
         application.add_handler(CommandHandler("stats", self.stats))
         application.add_handler(CommandHandler("leaderboard", self.leaderboard))
