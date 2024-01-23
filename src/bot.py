@@ -7,7 +7,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
-from src import catching
+from src import catching, storage
 
 
 class FishingBot:
@@ -53,9 +53,11 @@ class FishingBot:
         user = update.effective_user
         print(f"Trying to insert player {user.id}, {user.username}")
         self.db_connector.insert_player(user.id, user.username)
+        keyboard = [[KeyboardButton('/fish')]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
-            reply_markup=None,
+            reply_markup=reply_markup,
         )
 
     async def fish(self, update: Update, context):
@@ -64,8 +66,13 @@ class FishingBot:
         if result:
             print(result)
             keyboard = [[KeyboardButton('/fish')]]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
             await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
+
+    async def storage(self, update: Update, context):
+        user = update.effective_user
+        result = storage.player_storage(user.id, self)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
@@ -82,6 +89,7 @@ class FishingBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("fish", self.fish))
+        application.add_handler(CommandHandler("storage", self.storage))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
