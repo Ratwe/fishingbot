@@ -7,7 +7,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
-from src import catching, storage
+from src import catching, storage, stats
 
 
 class FishingBot:
@@ -74,6 +74,11 @@ class FishingBot:
         result = storage.player_storage(user.id, self)
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
+    async def stats(self, update: Update, context):
+        user = update.effective_user
+        result = stats.player_stats(user.id)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
 
@@ -90,6 +95,7 @@ class FishingBot:
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("fish", self.fish))
         application.add_handler(CommandHandler("storage", self.storage))
+        application.add_handler(CommandHandler("stats", self.stats))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
