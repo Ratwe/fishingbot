@@ -68,8 +68,8 @@ class DBConnector:
         '''
         return self.fetch_as_dicts(query)
 
-    def update_tool_last_use(self, player_id, tool):
-        time = datetime.datetime.now(datetime.timezone.utc)
+    def update_tool_last_use(self, player_id, time, tool):
+        print(f"new time: {time}")
         query = f'''
         UPDATE last_usages
         SET {tool}_last_use = '{time}'
@@ -137,6 +137,13 @@ class DBConnector:
     def get_fish(self, fish_name):
         query = f'''
         SELECT * FROM fish WHERE fish_name = '{fish_name}'
+        '''
+        return self.fetch_as_dicts(query)
+
+    def get_player_name(self, player_id):
+        query = f'''
+        SELECT name FROM player
+        WHERE player_id = {player_id};
         '''
         return self.fetch_as_dicts(query)
 
