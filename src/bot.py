@@ -3,7 +3,7 @@ import logging
 import os
 
 import yaml
-from telegram import Update, Bot
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
@@ -34,6 +34,13 @@ class FishingBot:
     async def send_message(self, user_id, message):
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
 
+    async def send_cooldown_message(self, user_id, cooldown):
+        keyboard = [[KeyboardButton('/fish')]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        await self.application.bot.send_message(chat_id=user_id, text=f"Перезарядка удочки: {cooldown:.0f} секунд(ы)!",
+                                                parse_mode="Markdown",
+                                                reply_markup=reply_markup)
+
     def get_text(self, var):
         return self.messages[var]
 
@@ -56,7 +63,9 @@ class FishingBot:
         result = await catching.player_catch_fish(user.id, update.message.date, self)
         if result:
             print(result)
-            await update.message.reply_text(result, parse_mode="Markdown")
+            keyboard = [[KeyboardButton('/fish')]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+            await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
 
     async def help_command(self, update: Update, context):
         await update.message.reply_text("Help!")
