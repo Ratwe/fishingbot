@@ -18,7 +18,7 @@ def storage_info_message(storage_info):
     return message
 
 
-def player_storage(player_id, bot):
+def get_player_storage(player_id, bot):
     db_connector = bot.db_connector
     storage_info = db_connector.get_player_storage(player_id)
 

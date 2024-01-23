@@ -55,7 +55,7 @@ async def can_player_fish(player_id, msg_time, bot, tool="rod"):
         last_usage = last_usages[0]["rod_last_use"]
     elif tool == "net":
         net = db_connector.get_player_net(player_id)
-        cooldown = net.cooldown
+        cooldown = net[0]["cooldown"]
         last_usage = last_usages[0]["net_last_use"]
 
     if last_usage is not None:
@@ -65,6 +65,7 @@ async def can_player_fish(player_id, msg_time, bot, tool="rod"):
         last_usage = datetime.strptime(last_usage_str, "%Y-%m-%d %H:%M:%S")
 
         diff = (msg_time - last_usage).total_seconds()
+        print(msg_time, last_usage)
 
         if diff < cooldown:
             await bot.send_cooldown_message(player_id, cooldown - diff)
@@ -173,15 +174,16 @@ def update_storage(player_id, fish_caught, db_connector):
         db_connector.update_fish_stored(fish_stored_id, cur_fish_stored_amount + fish_stored_gain)
 
 
-async def player_catch_fish(player_id, msg_date: datetime, bot):
+async def get_player_catch_fish(player_id, msg_date: datetime, bot):
     if await can_player_fish(player_id, msg_date, bot, tool="rod"):
         fish_caught = calc_tool_fish_caught(player_id, bot.db_connector, tool="rod")
         experience_gain = calc_caught_fish_experience(fish_caught, bot.db_connector)
-        await add_player_experience(player_id, experience_gain, bot)
 
         update_stats(player_id, fish_caught, bot.db_connector)
         update_storage(player_id, fish_caught, bot.db_connector)
-        bot.db_connector.update_tool_last_use(player_id, tool="rod")
+        bot.db_connector.update_tool_last_use(player_id, msg_date, tool="rod")
+
+        await add_player_experience(player_id, experience_gain, bot)
     else:
         return None
 

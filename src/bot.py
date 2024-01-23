@@ -7,7 +7,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
-from src import catching, storage, stats
+from src import catching, storage, stats, leaderboard
 
 
 class FishingBot:
@@ -36,7 +36,7 @@ class FishingBot:
 
     async def send_cooldown_message(self, user_id, cooldown):
         keyboard = [[KeyboardButton('/fish')]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await self.application.bot.send_message(chat_id=user_id, text=f"Перезарядка удочки: {cooldown:.0f} секунд(ы)!",
                                                 parse_mode="Markdown",
                                                 reply_markup=reply_markup)
@@ -62,7 +62,7 @@ class FishingBot:
 
     async def fish(self, update: Update, context):
         user = update.effective_user
-        result = await catching.player_catch_fish(user.id, update.message.date, self)
+        result = await catching.get_player_catch_fish(user.id, update.message.date, self)
         if result:
             print(result)
             keyboard = [[KeyboardButton('/fish')]]
@@ -71,12 +71,17 @@ class FishingBot:
 
     async def storage(self, update: Update, context):
         user = update.effective_user
-        result = storage.player_storage(user.id, self)
+        result = storage.get_player_storage(user.id, self)
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def stats(self, update: Update, context):
         user = update.effective_user
         result = stats.player_stats(user.id)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+
+    async def leaderboard(self, update: Update, context):
+        user = update.effective_user
+        result = leaderboard.get_leaderboard(user.id, self)
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def help_command(self, update: Update, context):
@@ -96,6 +101,7 @@ class FishingBot:
         application.add_handler(CommandHandler("fish", self.fish))
         application.add_handler(CommandHandler("storage", self.storage))
         application.add_handler(CommandHandler("stats", self.stats))
+        application.add_handler(CommandHandler("leaderboard", self.leaderboard))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )
