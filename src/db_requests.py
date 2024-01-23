@@ -1,5 +1,4 @@
 import configparser
-import datetime
 
 import psycopg2
 
@@ -26,13 +25,14 @@ class DBConnector:
         config.read("./settings/config.ini")
         return config
 
-    def execute_query(self, query):
+    def execute_query(self, query, commit=True):
         try:
             cursor = self.conn.cursor()
             cursor.execute(query)
             # Получение результатов запроса
             cursor.close()
-            self.conn.commit()
+            if commit:
+                self.conn.commit()
         except Exception as e:
             print(f"Error executing query: {str(e)}")
 
@@ -183,6 +183,14 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
+    def reset_player_fish_storage(self, player_id, commit=True):
+        query = f'''UPDATE fish_stored
+                SET stored_amount = 0
+                FROM storage
+                WHERE player_id = {player_id};
+                '''
+        self.execute_query(query, commit=commit)
+
     def get_fish_caught_id(self, player_id, fish_name):
         query = f'''SELECT fish_caught.id
                 FROM fish_caught
@@ -220,6 +228,17 @@ class DBConnector:
                 WHERE id = {fish_stored_id}
                 '''
         self.execute_query(query)
+
+    def update_balance(self, player_id, delta):
+        query = f'''UPDATE stats
+                SET balance = balance + {delta}
+                WHERE player_id = {player_id}
+                '''
+        self.execute_query(query)
+
+    def sell_storage(self, player_id, delta):
+        self.reset_player_fish_storage(player_id, commit=False)
+        self.update_balance(player_id, delta)
 
     @staticmethod
     def open_connection():

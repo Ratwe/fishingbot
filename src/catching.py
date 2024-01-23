@@ -3,6 +3,8 @@ import random
 
 from datetime import datetime
 
+from src.utils import translate_fish_name
+
 
 def calc_tool_catch_amount(player_id, db_connector, tool):
     player_stats = db_connector.get_player_stats(player_id)
@@ -17,19 +19,6 @@ def calc_tool_catch_amount(player_id, db_connector, tool):
         catch_amount *= catch_coef
 
     return catch_amount
-
-
-def translate_fish_name(fish_name):
-    match fish_name:
-        case 'cod':
-            fish_name = 'треска'
-        case 'salmon':
-            fish_name = 'лосось'
-        case 'puffer':
-            fish_name = 'иглобрюх'
-
-    return fish_name
-
 
 def catch_result_message(fish_caught, db_connector):
     message = '*Вы поймали:*'

@@ -1,4 +1,4 @@
-from src.catching import translate_fish_name
+from src.utils import translate_fish_name
 
 
 def storage_info_message(storage_info):

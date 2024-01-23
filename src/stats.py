@@ -1,5 +1,5 @@
 from db_requests import DBConnector
-from catching import translate_fish_name
+from src.utils import translate_fish_name
 
 db_connector = DBConnector()
 
