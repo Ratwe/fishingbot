@@ -67,7 +67,7 @@ async def can_player_fish(player_id, msg_time, bot, tool="rod"):
         diff = (msg_time - last_usage).total_seconds()
 
         if diff < cooldown:
-            await bot.send_message(player_id, f"Перезарядка удочки: {cooldown - diff:.0f} секунд(ы)!")
+            await bot.send_cooldown_message(player_id, cooldown - diff)
             return False
 
     return True
