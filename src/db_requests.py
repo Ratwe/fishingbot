@@ -44,6 +44,22 @@ class DBConnector:
         cursor.close()
         return result
 
+    def get_rod_fish_catch_chances(self, level):
+        query = f'''
+        SELECT fish_name, catch_chance
+        FROM fish_chances
+        WHERE rod_level = {level};
+        '''
+        return self.fetch_as_dicts(query)
+
+    def get_net_fish_catch_chances(self, level):
+        query = f'''
+        SELECT fish_name, catch_chance
+        FROM fish_chances
+        WHERE net_level = {level};
+        '''
+        return self.fetch_as_dicts(query)
+
     def get_player_rod_fish_catch_chances(self, player_id):
         query = f'''
         SELECT fish_name, catch_chance
@@ -128,6 +144,15 @@ class DBConnector:
         '''
         return self.fetch_as_dicts(query)
 
+    def get_player_balance(self, player_id):
+        query = f'''
+        SELECT balance
+        FROM player
+        JOIN stats ON player.player_id = stats.player_id
+        WHERE player.player_id = {player_id};
+        '''
+        return self.fetch_as_dicts(query)
+
     def get_promoted_channels(self):
         query = '''
         SELECT * FROM promoted_channels
@@ -158,6 +183,27 @@ class DBConnector:
         query = f'''
         SELECT * FROM rod
         WHERE level = (SELECT player.rod_level FROM player WHERE player_id = {player_id});
+        '''
+        return self.fetch_as_dicts(query)
+
+    def get_player_level(self, player_id):
+        query = f'''
+           SELECT level FROM player
+           WHERE player_id = {player_id};
+           '''
+        return self.fetch_as_dicts(query)
+
+    def get_rod_by_level(self, level):
+        query = f'''
+        SELECT * FROM rod
+        WHERE level = {level};
+        '''
+        return self.fetch_as_dicts(query)
+
+    def get_net_by_level(self, level):
+        query = f'''
+        SELECT * FROM net
+        WHERE level = {level};
         '''
         return self.fetch_as_dicts(query)
 
@@ -236,8 +282,30 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
+    def update_player_rod_level(self, player_id, level):
+        query = f'''UPDATE player
+                SET rod_level = {level}
+                WHERE player_id = {player_id}
+                '''
+        self.execute_query(query)
+
+    def update_player_net_level(self, player_id, level):
+        query = f'''UPDATE player
+                SET net_level = {level}
+                WHERE player_id = {player_id}
+                '''
+        self.execute_query(query)
+
     def sell_storage(self, player_id, delta):
         self.reset_player_fish_storage(player_id, commit=False)
+        self.update_balance(player_id, delta)
+
+    def up_player_rod(self, player_id, level, delta):
+        self.update_player_rod_level(player_id, level)
+        self.update_balance(player_id, delta)
+
+    def up_player_net(self, player_id, level, delta):
+        self.update_player_net_level(player_id, level)
         self.update_balance(player_id, delta)
 
     @staticmethod

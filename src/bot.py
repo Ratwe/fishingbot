@@ -7,7 +7,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
-from src import catching, storage, stats, leaderboard, selling
+from src import catching, storage, stats, leaderboard, selling, store
 
 
 class FishingBot:
@@ -38,7 +38,7 @@ class FishingBot:
         tool_name = None
         reply_markup = None
         if tool == "rod":
-            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('/fish')]], resize_keyboard=True,
+            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('рыбачить')]], resize_keyboard=True,
                                                one_time_keyboard=True)
             tool_name = "удочки"
         elif tool == "net":
@@ -62,7 +62,7 @@ class FishingBot:
         user = update.effective_user
         print(f"Trying to insert player {user.id}, {user.username}")
         self.db_connector.insert_player(user.id, user.username)
-        keyboard = [[KeyboardButton('/fish')]]
+        keyboard = [[KeyboardButton('рыбачить')]]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_html(
             self.get_text("bot_start").format(user.mention_html()),
@@ -73,7 +73,7 @@ class FishingBot:
         user = update.effective_user
         result = await catching.get_player_catch_fish(user.id, update.message.date, self, tool="rod")
         if result:
-            keyboard = [[KeyboardButton('/fish')]]
+            keyboard = [[KeyboardButton('рыбачить')]]
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
             await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
 
@@ -105,7 +105,37 @@ class FishingBot:
         result = selling.sell_all(user.id, self)
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
-    async def help_command(self, update: Update, context):
+    async def store(self, update: Update, context):
+        keyboard = [[KeyboardButton("улучшить удочку"), KeyboardButton("улучшить сеть")]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+        await update.message.reply_text("В магазине можно улучшить удочку и сеть до нового уровня\n"
+                                        "Улучшить удочку - /up_rod\n"
+                                        "Улучшить сеть - /up_net", reply_markup=reply_markup)
+
+    async def up_rod(self, update: Update, context):
+        user = update.effective_user
+        result = store.up_rod(user.id, self)
+        keyboard = [[KeyboardButton('подтвердить улучшение удочки')]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
+
+    async def up_rod_approve(self, update: Update, context):
+        user = update.effective_user
+        result = store.up_rod_approve(user.id, self)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+
+    async def up_net(self, update: Update, context):
+        user = update.effective_user
+        result = store.up_net(user.id, self)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+
+    async def up_net_approve(self, update: Update, context):
+        user = update.effective_user
+        result = store.up_net_approve(user.id, self)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+
+    async def help(self, update: Update, context):
         await update.message.reply_text("Help!")
 
     async def echo(self, update: Update, context):
@@ -118,13 +148,34 @@ class FishingBot:
 
     def setup_application(self, application):
         application.add_handler(CommandHandler("start", self.start))
-        application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)старт'), self.start))
+        application.add_handler(CommandHandler("help", self.help))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)помощь'), self.help))
         application.add_handler(CommandHandler("fish", self.fish))
-        application.add_handler(CommandHandler("net", self.net))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)рыбачить'), self.fish))
+
         application.add_handler(CommandHandler("storage", self.storage))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)склад'), self.storage))
         application.add_handler(CommandHandler("stats", self.stats))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)статистика'), self.stats))
         application.add_handler(CommandHandler("leaderboard", self.leaderboard))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)топ'), self.leaderboard))
         application.add_handler(CommandHandler("sell", self.sell))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)продать'), self.sell))
+        application.add_handler(CommandHandler("store", self.store))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)магазин'), self.store))
+        application.add_handler(CommandHandler("up_rod", self.up_rod))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)улучшить удочку'), self.up_rod))
+        application.add_handler(CommandHandler("up_rod_approve", self.up_rod_approve))
+        application.add_handler(
+            MessageHandler(filters.TEXT & filters.Regex(r'(?i)подтвердить улучшение удочки'), self.up_rod_approve))
+        application.add_handler(CommandHandler("up_net", self.up_net))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)улучшить сеть'), self.up_net))
+        application.add_handler(CommandHandler("up_net_approve", self.up_net_approve))
+        application.add_handler(
+            MessageHandler(filters.TEXT & filters.Regex(r'(?i)подтвердить улучшение сети'), self.up_net_approve))
+        application.add_handler(CommandHandler("net", self.net))
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)сеть'), self.net))
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
         )

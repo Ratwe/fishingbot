@@ -6,7 +6,7 @@ from datetime import datetime
 from src.utils import translate_fish_name
 
 
-def calc_tool_catch_amount(player_id, db_connector, tool):
+def calc_tool_catch_amount(player_id, db_connector, tool="rod"):
     player_stats = db_connector.get_player_stats(player_id)
     player_level = int(player_stats[0]["level"])
     config = configparser.ConfigParser()
