@@ -26,7 +26,7 @@ def up_rod(player_id, bot):
 
     message += "\n*Улучшение удочки:*\n" \
                f"Уровень: {cur_rod_level + 1}\n" \
-               f"Перезарядка: {next_level_rod_cooldown} секунд(ы)\n" \
+               f"Перезарядка: {next_level_rod_cooldown:.2f} секунд(ы)\n" \
                f"Пропорция видов рыб в улове:\n"
 
     fish_chances = db_connector.get_rod_fish_catch_chances(cur_rod_level + 1)
@@ -90,7 +90,7 @@ def up_net(player_id, bot):
 
     message += "\n*Улучшение сети:*\n" \
                f"Уровень: {cur_net_level + 1}\n" \
-               f"Перезарядка: {next_level_net_cooldown} секунд(ы)\n" \
+               f"Перезарядка: {next_level_net_cooldown:.2f} секунд(ы)\n" \
                f"Коэффициент улова: x{next_level_net_catch_coef}\n" \
                f"Пропорция видов рыб в улове:\n"
 
