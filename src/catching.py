@@ -78,6 +78,9 @@ def calc_tool_fish_caught(player_id, db_connector, tool="rod"):
         caught_amount = int(catch_chance * catch_amount * random.uniform(0.7, 1.3))
         fish_caught.append({"fish_name": fish_name, "caught_amount": caught_amount})
 
+    if tool == "net":
+        print("net fish_caught:", fish_caught)
+
     return fish_caught
 
 
