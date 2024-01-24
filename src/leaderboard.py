@@ -1,8 +1,10 @@
 def leaderboard_message(player_id, leaderboard, db_connector):
     message = "*Таблица лидеров*\n" \
-              "Ранг. Имя (уровень): Всего заработано\n"
+              "Ранг. Имя (уровень): всего заработано\n"
     count = 0
-    for record in leaderboard and count < 20:
+    for record in leaderboard:
+        if count >= 20:
+            break
         cur_player_id = record["player_id"]
         player_name = db_connector.get_player_name(cur_player_id)[0]["name"]
         rank = record["rank"]
