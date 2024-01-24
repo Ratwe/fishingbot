@@ -96,6 +96,7 @@ class DBConnector:
     def get_leaderboard(self):
         query = '''
         SELECT * FROM leaderboard
+        ORDER BY rank
         '''
         return self.fetch_as_dicts(query)
 
@@ -231,9 +232,13 @@ class DBConnector:
 
     def reset_player_fish_storage(self, player_id, commit=True):
         query = f'''UPDATE fish_stored
-                SET stored_amount = 0
-                FROM storage
-                WHERE player_id = {player_id};
+                    SET stored_amount = 0
+                    WHERE storage_id IN (
+                        SELECT storage.id
+                        FROM storage
+                        JOIN public.player p ON p.player_id = storage.player_id
+                        WHERE p.player_id = {player_id}
+                    );
                 '''
         self.execute_query(query, commit=commit)
 
