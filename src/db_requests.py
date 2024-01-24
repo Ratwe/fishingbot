@@ -35,6 +35,7 @@ class DBConnector:
                 self.conn.commit()
         except Exception as e:
             print(f"Error executing query: {str(e)}")
+            self.conn.rollback()
 
     def fetch_as_dicts(self, query):
         cursor = self.conn.cursor()
