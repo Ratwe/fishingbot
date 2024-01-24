@@ -8,7 +8,7 @@ def player_stats(player_id, bot):
     stats = db_connector.get_player_stats(player_id)
     level = stats[0]["level"]
     experience = stats[0]["experience"]
-    next_level_experience = db_connector.get_level_exp_required(level + 1)
+    next_level_experience = db_connector.get_level_exp_required(level + 1)[0]["exp_required"]
     balance = stats[0]["balance"]
     total_earning = stats[0]["total_earning"]
     rank = db_connector.get_player_rank(player_id)[0]["rank"]

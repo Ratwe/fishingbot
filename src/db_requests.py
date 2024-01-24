@@ -85,7 +85,6 @@ class DBConnector:
         return self.fetch_as_dicts(query)
 
     def update_tool_last_use(self, player_id, time, tool):
-        print(f"new time: {time}")
         query = f'''
         UPDATE last_usages
         SET {tool}_last_use = '{time}'
