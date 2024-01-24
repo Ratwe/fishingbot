@@ -132,6 +132,8 @@ async def add_player_experience(player_id, amount, bot):
         exp_required = db_connector.get_level_exp_required(level + 1)[0]["exp_required"]
         await bot.send_message(player_id, f"Уровень повышен до {level}!")
 
+    db_connector.update_player_experience(player_id, experience)
+
 
 def update_stats(player_id, fish_caught, db_connector):
     for fish in fish_caught:
