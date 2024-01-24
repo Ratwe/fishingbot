@@ -282,6 +282,13 @@ class DBConnector:
                 '''
         self.execute_query(query)
 
+    def update_total_earning(self, player_id, delta):
+        query = f'''UPDATE stats
+                SET total_earning = total_earning + {delta}
+                WHERE player_id = {player_id}
+                '''
+        self.execute_query(query)
+
     def update_player_rod_level(self, player_id, level):
         query = f'''UPDATE player
                 SET rod_level = {level}
@@ -299,6 +306,7 @@ class DBConnector:
     def sell_storage(self, player_id, delta):
         self.reset_player_fish_storage(player_id, commit=False)
         self.update_balance(player_id, delta)
+        self.update_total_earning(player_id, delta)
 
     def up_player_rod(self, player_id, level, delta):
         self.update_player_rod_level(player_id, level)
