@@ -98,7 +98,7 @@ class FishingBot:
 
     async def stats(self, update: Update, context):
         user = update.effective_user
-        result = stats.player_stats(user.id)
+        result = stats.player_stats(user.id, self)
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def leaderboard(self, update: Update, context):

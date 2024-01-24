@@ -3,13 +3,12 @@ import configparser
 from db_requests import DBConnector
 from utils import translate_fish_name
 
-db_connector = DBConnector()
-
-
-def player_stats(player_id):
+def player_stats(player_id, bot):
+    db_connector = bot.db_connector
     stats = db_connector.get_player_stats(player_id)
     level = stats[0]["level"]
     experience = stats[0]["experience"]
+    next_level_experience = db_connector.get_level_exp_required(level + 1)
     balance = stats[0]["balance"]
     total_earning = stats[0]["total_earning"]
     rank = db_connector.get_player_rank(player_id)[0]["rank"]
@@ -23,6 +22,7 @@ def player_stats(player_id):
     message = f"*Профиль*\n" \
               f"Уровень: {level}\n" \
               f"Опыт: {experience}\n" \
+              f"Опыт для следующего уровня: {next_level_experience}\n" \
               f"Баланс: {balance}\n" \
               f"Заработано всего: {total_earning}\n" \
               f"Средний улов: {avg_catch:.2f} рыб(ы)\n" \
