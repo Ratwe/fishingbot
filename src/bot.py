@@ -134,7 +134,9 @@ class FishingBot:
     async def up_net(self, update: Update, context):
         user = update.effective_user
         result = store.up_net(user.id, self)
-        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
+        keyboard = [[KeyboardButton('подтвердить улучшение сети')]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=reply_markup)
 
     async def up_net_approve(self, update: Update, context):
         user = update.effective_user
