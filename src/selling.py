@@ -1,4 +1,4 @@
-from src.utils import translate_fish_name
+from utils import translate_fish_name
 
 
 def calc_fish_profit(fish_name, amount, db_connector):

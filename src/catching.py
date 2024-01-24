@@ -3,7 +3,7 @@ import random
 
 from datetime import datetime
 
-from src.utils import translate_fish_name
+from utils import translate_fish_name
 
 
 def calc_tool_catch_amount(player_id, db_connector, tool="rod"):

@@ -1,7 +1,7 @@
 import configparser
 
 from db_requests import DBConnector
-from src.utils import translate_fish_name
+from utils import translate_fish_name
 
 db_connector = DBConnector()
 

@@ -7,7 +7,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from db_requests import DBConnector
-from src import catching, storage, stats, leaderboard, selling, store
+import catching, storage, stats, leaderboard, selling, store
 
 
 class FishingBot:
