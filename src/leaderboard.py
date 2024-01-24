@@ -24,6 +24,8 @@ def leaderboard_message(player_id, leaderboard, db_connector):
     message += "\nВаша позиция:\n" \
                f"{rank}. @{player_name} ({level}): {total_earning}$\n"
 
+    message += "\n_Таблица лидеров обновляется раз в 10 минут_"
+
     return message
 
 

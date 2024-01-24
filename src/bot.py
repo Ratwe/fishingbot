@@ -6,8 +6,14 @@ import yaml
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
+import catching
+import leaderboard
+import selling
+import stats
+import storage
+import store
+import utils
 from db_requests import DBConnector
-import catching, storage, stats, leaderboard, selling, store
 
 
 class FishingBot:
@@ -136,10 +142,11 @@ class FishingBot:
         await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def help(self, update: Update, context):
-        await update.message.reply_text("Help!")
+        result = utils.help()
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=None)
 
     async def echo(self, update: Update, context):
-        await update.message.reply_text("Не понимаю. Блокирую!")
+        await update.message.reply_text("Неизвестная команда. Помощь - /help")
 
     def get_application(self):
         config = self.read_config()
@@ -152,6 +159,7 @@ class FishingBot:
         application.add_handler(CommandHandler("help", self.help))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)помощь'), self.help))
         application.add_handler(CommandHandler("fish", self.fish))
+        application.add_handler(CommandHandler("rod", self.fish))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)рыбачить'), self.fish))
 
         application.add_handler(CommandHandler("storage", self.storage))
