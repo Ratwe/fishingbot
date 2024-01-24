@@ -12,7 +12,9 @@ def leaderboard_message(player_id, leaderboard, db_connector):
         level = stats[0]["level"]
         total_earning = stats[0]["total_earning"]
 
-        message += f"{rank}. @{player_name} ({level}): {total_earning}$\n"
+        escaped_player_name = player_name.replace('_', r'\_')
+        message += f"{rank}. @{escaped_player_name} ({level}): {total_earning}$\n"
+
         count += 1
 
     stats = db_connector.get_player_stats(player_id)
