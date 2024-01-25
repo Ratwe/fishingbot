@@ -33,7 +33,7 @@ def catch_result_message(fish_caught, db_connector):
     return message
 
 
-async def can_player_fish(player_id, msg_time, bot, tool="rod"):
+async def can_player_fish(player_id, msg_time, bot, tool):
     db_connector = bot.db_connector
     last_usages = db_connector.get_player_last_usages(player_id)
     last_usage: datetime = None
@@ -166,7 +166,7 @@ def update_storage(player_id, fish_caught, db_connector):
         db_connector.update_fish_stored(fish_stored_id, cur_fish_stored_amount + fish_stored_gain)
 
 
-async def get_player_catch_fish(player_id, msg_date: datetime, bot, tool="rod"):
+async def get_player_catch_fish(player_id, msg_date: datetime, bot, tool):
     if await can_player_fish(player_id, msg_date, bot, tool=tool):
         fish_caught = calc_tool_fish_caught(player_id, bot.db_connector, tool=tool)
         experience_gain = calc_caught_fish_experience(fish_caught, bot.db_connector)

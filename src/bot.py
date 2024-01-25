@@ -41,13 +41,13 @@ class FishingBot:
     async def send_message(self, user_id, message):
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
 
-    async def send_cooldown_message(self, user_id, cooldown, tool="rod"):
+    async def send_cooldown_message(self, user_id, cooldown, tool):
         tool_name = None
         reply_markup = None
         if tool == "rod":
+            tool_name = "удочки"
             reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Ловить рыбу')], [KeyboardButton('Меню')]], resize_keyboard=True,
                                                one_time_keyboard=True)
-            tool_name = "удочки"
         elif tool == "net":
             tool_name = "сети"
             reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Забросить сеть')], [KeyboardButton('Меню')]], resize_keyboard=True,
@@ -178,6 +178,7 @@ class FishingBot:
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Статистика'), self.stats))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Профиль'), self.stats))
         application.add_handler(CommandHandler("leaderboard", self.leaderboard))
+        application.add_handler(CommandHandler("top", self.leaderboard))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Топ'), self.leaderboard))
         application.add_handler(CommandHandler("sell", self.sell))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Продать'), self.sell))
