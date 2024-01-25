@@ -24,6 +24,7 @@ def catch_result_message(fish_caught, db_connector):
     print("entered catch_result_message")
 
     message = '*Вы поймали:*'
+    print(message)
     for fish in fish_caught:
         caught_amount = fish["caught_amount"]
         if caught_amount > 0:
