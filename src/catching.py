@@ -23,17 +23,16 @@ def calc_tool_catch_amount(player_id, db_connector, tool="rod"):
 
 async def catch_result_message(fish_caught, db_connector):
     print("entered catch_result_message")
-    message = None
-    print(message)
-    print('*Вы поймали:*')
+    # message = None
+    # print(message)
     message = '*Вы поймали:*'
-    print(message)
+    # print(message)
     for fish in fish_caught:
         caught_amount = fish["caught_amount"]
         if caught_amount > 0:
             fish_name = translate_fish_name(fish["fish_name"])
             message += f"\n- {caught_amount} {fish_name}"
-            print(message)
+            # print(message)
     exp = calc_caught_fish_experience(fish_caught, db_connector)
     message += f"\nПолучено {exp} XP"
 
