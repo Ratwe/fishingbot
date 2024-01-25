@@ -20,6 +20,29 @@ BEGIN
 END;
 $$;
 
-TRUNCATE TABLE net CASCADE;
+CREATE OR REPLACE PROCEDURE update_net(count INT)
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    i                  INT;
+    current_price      DECIMAL(30, 0);
+    current_cooldown   FLOAT;
+    current_catch_coef FLOAT;
+BEGIN
+    FOR i IN 0..count
+        LOOP
+            current_price := 600 * (1.15) ^ (i - 9) * 3;
+            current_cooldown := 10;
+            current_catch_coef := 10 + i;
+
+            UPDATE net
+            set cooldown = current_cooldown
+            where level = i;
+        END LOOP;
+END;
+$$;
+
 CALL insert_net(200);
+CALL update_net(200);
 select * from net;

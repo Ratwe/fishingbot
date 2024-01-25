@@ -21,6 +21,7 @@ def calc_tool_catch_amount(player_id, db_connector, tool="rod"):
     return catch_amount
 
 def catch_result_message(fish_caught, db_connector):
+    print("entered catch_result_message")
     message = '*Вы поймали:*'
     for fish in fish_caught:
         caught_amount = fish["caught_amount"]
@@ -30,6 +31,7 @@ def catch_result_message(fish_caught, db_connector):
     exp = calc_caught_fish_experience(fish_caught, db_connector)
     message += f"\nПолучено {exp} XP"
 
+    print("catch_result_message:\n", message)
     return message
 
 
@@ -175,8 +177,12 @@ async def get_player_catch_fish(player_id, msg_date: datetime, bot, tool):
         update_storage(player_id, fish_caught, bot.db_connector)
         bot.db_connector.update_tool_last_use(player_id, msg_date, tool=tool)
 
+        if tool == "net":
+            print("net await add_player_experience")
         await add_player_experience(player_id, experience_gain, bot)
+        if tool == "net":
+            print("net catch_result_message")
+        return catch_result_message(fish_caught, bot.db_connector)
     else:
         return None
 
-    return catch_result_message(fish_caught, bot.db_connector)
