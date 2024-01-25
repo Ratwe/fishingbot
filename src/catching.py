@@ -20,7 +20,8 @@ def calc_tool_catch_amount(player_id, db_connector, tool="rod"):
 
     return catch_amount
 
-def catch_result_message(fish_caught, db_connector):
+
+async def catch_result_message(fish_caught, db_connector):
     print("entered catch_result_message")
     message = None
     print(message)
@@ -186,7 +187,6 @@ async def get_player_catch_fish(player_id, msg_date: datetime, bot, tool):
         await add_player_experience(player_id, experience_gain, bot)
         if tool == "net":
             print("net catch_result_message")
-        return catch_result_message(fish_caught, bot.db_connector)
+        return await catch_result_message(fish_caught, bot.db_connector)
     else:
         return None
-
