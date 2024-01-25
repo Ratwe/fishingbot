@@ -25,6 +25,7 @@ async def catch_result_message(fish_caught, db_connector):
     print("entered catch_result_message")
     message = None
     print(message)
+    print('*Вы поймали:*')
     message = '*Вы поймали:*'
     print(message)
     for fish in fish_caught:
