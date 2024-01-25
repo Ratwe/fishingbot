@@ -21,7 +21,7 @@ def calc_tool_catch_amount(player_id, db_connector, tool="rod"):
     return catch_amount
 
 def catch_result_message(fish_caught, db_connector):
-    print("entered catch_result_message")
+    print("entered catch_result_message ААА БАТАРЕЙКИ")
 
     message = '*Вы поймали:*'
     for fish in fish_caught:
