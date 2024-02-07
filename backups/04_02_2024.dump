@@ -1,0 +1,3082 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 12.17 (Ubuntu 12.17-0ubuntu0.20.04.1)
+-- Dumped by pg_dump version 12.17 (Ubuntu 12.17-0ubuntu0.20.04.1)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'LATIN1';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: pg_cron; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pg_cron; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pg_cron IS 'Job scheduler for PostgreSQL';
+
+
+--
+-- Name: fish_data_type; Type: TYPE; Schema: public; Owner: admin
+--
+
+CREATE TYPE public.fish_data_type AS (
+	fish_name text,
+	catch_chance double precision
+);
+
+
+ALTER TYPE public.fish_data_type OWNER TO admin;
+
+--
+-- Name: calc_level_hardness(integer); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.calc_level_hardness(count integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    i               INT;
+    rod_price       DECIMAL(30, 0);
+    net_price       DECIMAL(30, 0);
+    rod_cooldown    FLOAT;
+    net_cooldown    FLOAT;
+    net_catch_coef  FLOAT;
+    avg_catch       INT;
+    total_rod_cost  FLOAT := 0; -- Initialize to 0
+    total_rod_exp   FLOAT := 0; -- Initialize to 0
+    total_net_cost  FLOAT := 0; -- Initialize to 0
+    total_net_exp   FLOAT := 0; -- Initialize to 0
+    avg_rod_cost    FLOAT;
+    avg_rod_exp     FLOAT;
+    avg_net_cost    FLOAT;
+    avg_net_exp     FLOAT;
+    cost_per_second FLOAT;
+    exp_per_second  FLOAT;
+    fish_data       fish_data_type[]; -- Declare as an array of records
+    cur_fish_data   fish_data_type;
+    cur_cost        FLOAT;
+    cur_exp         FLOAT;
+    exp_to_unlock   FLOAT;
+    new_level_time  FLOAT;
+    rod_time_to_buy FLOAT;
+    net_time_to_buy FLOAT;
+BEGIN
+    TRUNCATE level_hardness;
+    TRUNCATE levels;
+
+    FOR i IN 1..count
+        LOOP
+            rod_price := 20 * (1.15) ^ (i - 1);
+            rod_cooldown := 5 * (0.97) ^ i; -- Adjusted the exponent
+            net_price := 150 * (1.15) ^ (i - 9) * 3;
+            net_cooldown := 100;
+            net_catch_coef := 1 + i * 0.1;
+
+            avg_catch := 5 + i - 1;
+
+            SELECT ARRAY_AGG(ROW (fish.fish_name, fish_chances.catch_chance))
+            INTO fish_data
+            FROM fish_chances
+                     JOIN net ON net.level = fish_chances.net_level
+                     JOIN fish ON fish_chances.fish_name = fish.fish_name
+            WHERE net.level = i;
+
+            total_rod_cost := 0;
+            total_rod_exp := 0;
+            total_net_cost := 0;
+            total_net_exp := 0;
+
+            FOREACH cur_fish_data IN ARRAY fish_data
+                LOOP
+                    SELECT cost, experience
+                    INTO cur_cost, cur_exp
+                    FROM fish
+                    WHERE fish_name = cur_fish_data.fish_name;
+
+                    total_rod_cost := total_rod_cost + cur_cost * avg_catch * cur_fish_data.catch_chance;
+                    total_rod_exp := total_rod_exp + cur_exp * avg_catch * cur_fish_data.catch_chance;
+                    total_net_cost :=
+                                total_net_cost + cur_cost * avg_catch * cur_fish_data.catch_chance * net_catch_coef;
+                    total_net_exp := total_net_exp + cur_exp * avg_catch * cur_fish_data.catch_chance * net_catch_coef;
+                END LOOP;
+
+            avg_rod_cost := total_rod_cost / rod_cooldown;
+            avg_rod_exp := total_rod_exp / rod_cooldown;
+            avg_net_cost := total_net_cost / net_cooldown;
+            avg_net_exp := total_net_exp / net_cooldown;
+            cost_per_second := avg_rod_cost + avg_net_cost;
+            exp_per_second := avg_rod_exp + avg_net_exp;
+
+            new_level_time := 20 * 1.05 ^ (i - 1);
+            exp_to_unlock = new_level_time * exp_per_second;
+
+            rod_time_to_buy = rod_price / cost_per_second;
+            net_time_to_buy = net_price / cost_per_second;
+
+
+            INSERT INTO level_hardness
+            VALUES (i, rod_price, rod_time_to_buy, rod_cooldown, net_price, net_time_to_buy, net_cooldown,
+                    net_catch_coef, avg_rod_cost, avg_rod_exp,
+                    avg_net_cost, avg_net_exp, cost_per_second, exp_per_second, exp_to_unlock, new_level_time);
+
+            INSERT INTO levels VALUES (i, exp_to_unlock);
+        END LOOP;
+
+END;
+$$;
+
+
+ALTER PROCEDURE public.calc_level_hardness(count integer) OWNER TO admin;
+
+--
+-- Name: delete_player(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.delete_player() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    DELETE
+    FROM leaderboard
+    WHERE player_id = OLD.player_id;
+
+
+    DELETE
+    FROM last_usages
+    WHERE player_id = old.player_id;
+
+    DELETE
+    FROM fish_caught
+    WHERE stats_id IN (SELECT id FROM stats WHERE player_id = OLD.player_id);
+
+    DELETE
+    FROM stats
+    WHERE player_id = OLD.player_id;
+
+    DELETE
+    FROM fish_stored
+    WHERE storage_id IN (SELECT id FROM storage WHERE player_id = OLD.player_id);
+
+    DELETE
+    FROM storage
+    WHERE player_id = OLD.player_id;
+
+    RETURN OLD;
+END;
+$$;
+
+
+ALTER FUNCTION public.delete_player() OWNER TO admin;
+
+--
+-- Name: insert_fish_chances(integer); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.insert_fish_chances(count integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    i INT;
+    current_rod_level INT;
+    current_net_level INT;
+    cod_chance NUMERIC(4, 3);
+    salmon_chance NUMERIC(4, 3);
+    puffer_chance NUMERIC(4, 3);
+BEGIN
+    FOR i IN 0..count LOOP
+        current_rod_level := i;
+        current_net_level := i;
+
+        IF i <= 5 THEN
+            cod_chance := 1.0;
+            salmon_chance := 0.0;
+            puffer_chance := 0.0;
+        ELSIF i <= 9 THEN
+            cod_chance := GREATEST(0.0, 1.0 - 0.15 * (i - 5));
+            salmon_chance := LEAST(1.0, 0.15 * (i - 5));
+            puffer_chance := 0.0;
+        ELSIF i = 10 THEN
+            cod_chance := 0.20;
+            salmon_chance := 0.75;
+            puffer_chance := 0.05;
+        ELSE
+            cod_chance := GREATEST(0.0000, cod_chance * 0.8);
+            salmon_chance := GREATEST(0.0000, salmon_chance * 0.9);
+            puffer_chance := 1.0 - cod_chance - salmon_chance;
+        END IF;
+
+        INSERT INTO fish_chances (fish_name, rod_level, net_level, catch_chance)
+        VALUES ('cod', current_rod_level, current_net_level, cod_chance),
+               ('salmon', current_rod_level, current_net_level, salmon_chance),
+               ('puffer', current_rod_level, current_net_level, puffer_chance);
+    END LOOP;
+END;
+$$;
+
+
+ALTER PROCEDURE public.insert_fish_chances(count integer) OWNER TO admin;
+
+--
+-- Name: insert_net(integer); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.insert_net(count integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    i                  INT;
+    current_price      DECIMAL(30, 0);
+    current_cooldown   FLOAT;
+    current_catch_coef FLOAT;
+BEGIN
+    FOR i IN 0..count
+        LOOP
+            current_price := 600 * (1.15) ^ (i - 9) * 3;
+            current_cooldown := 300;
+            current_catch_coef := 10 + i;
+
+            INSERT INTO net (level, price, cooldown, catch_coef)
+            VALUES (i, current_price, current_cooldown, current_catch_coef);
+        END LOOP;
+END;
+$$;
+
+
+ALTER PROCEDURE public.insert_net(count integer) OWNER TO admin;
+
+--
+-- Name: insert_player(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.insert_player() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    stats_id   INT;
+    storage_id INT;
+BEGIN
+    INSERT INTO leaderboard(player_id, rank)
+    VALUES (NEW.player_id, NULL);
+
+    INSERT INTO last_usages(player_id, rod_last_use, net_last_use)
+    VALUES (NEW.player_id, NULL, NULL);
+
+    INSERT INTO stats(player_id, balance, total_earning)
+    VALUES (NEW.player_id, 0, 0)
+    RETURNING id INTO stats_id;
+
+    INSERT INTO fish_caught(stats_id, fish_name, caught_amount)
+    VALUES (stats_id, 'cod', 0),
+           (stats_id, 'salmon', 0),
+           (stats_id, 'puffer', 0);
+
+    INSERT INTO storage(player_id)
+    VALUES (NEW.player_id)
+    RETURNING id INTO storage_id;
+
+    INSERT INTO fish_stored(storage_id, fish_name, stored_amount)
+    VALUES (storage_id, 'cod', 0),
+           (storage_id, 'salmon', 0),
+           (storage_id, 'puffer', 0);
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.insert_player() OWNER TO admin;
+
+--
+-- Name: insert_rod(integer); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.insert_rod(count integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    i INT;
+    current_price DECIMAL(30,0);
+    current_cooldown FLOAT;
+BEGIN
+    FOR i IN 0..count LOOP
+        current_price := 20 * (1.15)^(i - 1);
+        current_cooldown := 20 * (0.97)^(i);
+
+        INSERT INTO rod (level, price, cooldown)
+        VALUES (i, current_price, current_cooldown);
+    END LOOP;
+END;
+$$;
+
+
+ALTER PROCEDURE public.insert_rod(count integer) OWNER TO admin;
+
+--
+-- Name: update_leaderboard(); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.update_leaderboard()
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    UPDATE leaderboard AS l
+    SET rank = subquery.rank
+    FROM (SELECT player_id, total_earning, RANK() OVER (ORDER BY total_earning DESC) AS rank
+          FROM stats) AS subquery
+    WHERE l.player_id = subquery.player_id;
+
+    RAISE NOTICE 'Leaderboard was updated at %', NOW(); -- Raise error message with current timestamp
+
+END;
+$$;
+
+
+ALTER PROCEDURE public.update_leaderboard() OWNER TO admin;
+
+--
+-- Name: update_net(integer); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.update_net(count integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    i                  INT;
+    current_price      DECIMAL(30, 0);
+    current_cooldown   FLOAT;
+    current_catch_coef FLOAT;
+BEGIN
+    FOR i IN 0..count
+        LOOP
+            current_price := 600 * (1.15) ^ (i - 9) * 3;
+            current_cooldown := 300;
+            current_catch_coef := 10 + i;
+
+            UPDATE net
+            set cooldown = current_cooldown
+            where level = i;
+        END LOOP;
+END;
+$$;
+
+
+ALTER PROCEDURE public.update_net(count integer) OWNER TO admin;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: fish; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fish (
+    fish_name character varying(30) NOT NULL,
+    cost integer,
+    experience integer,
+    id integer
+);
+
+
+ALTER TABLE public.fish OWNER TO admin;
+
+--
+-- Name: fish_caught; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fish_caught (
+    id integer NOT NULL,
+    stats_id integer,
+    fish_name character varying(30),
+    caught_amount integer
+);
+
+
+ALTER TABLE public.fish_caught OWNER TO admin;
+
+--
+-- Name: fish_caught_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.fish_caught_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.fish_caught_id_seq OWNER TO admin;
+
+--
+-- Name: fish_caught_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.fish_caught_id_seq OWNED BY public.fish_caught.id;
+
+
+--
+-- Name: fish_chances; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fish_chances (
+    id integer NOT NULL,
+    fish_name character varying(30),
+    rod_level integer,
+    net_level integer,
+    catch_chance numeric(4,3)
+);
+
+
+ALTER TABLE public.fish_chances OWNER TO admin;
+
+--
+-- Name: fish_chances_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.fish_chances_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.fish_chances_id_seq OWNER TO admin;
+
+--
+-- Name: fish_chances_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.fish_chances_id_seq OWNED BY public.fish_chances.id;
+
+
+--
+-- Name: fish_stored; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fish_stored (
+    id integer NOT NULL,
+    storage_id integer,
+    fish_name character varying(30),
+    stored_amount integer
+);
+
+
+ALTER TABLE public.fish_stored OWNER TO admin;
+
+--
+-- Name: fish_stored_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.fish_stored_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.fish_stored_id_seq OWNER TO admin;
+
+--
+-- Name: fish_stored_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.fish_stored_id_seq OWNED BY public.fish_stored.id;
+
+
+--
+-- Name: last_usages; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.last_usages (
+    id integer NOT NULL,
+    player_id bigint,
+    rod_last_use timestamp without time zone,
+    net_last_use timestamp without time zone
+);
+
+
+ALTER TABLE public.last_usages OWNER TO admin;
+
+--
+-- Name: last_usages_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.last_usages_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.last_usages_id_seq OWNER TO admin;
+
+--
+-- Name: last_usages_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.last_usages_id_seq OWNED BY public.last_usages.id;
+
+
+--
+-- Name: leaderboard; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.leaderboard (
+    id integer NOT NULL,
+    player_id bigint,
+    rank integer
+);
+
+
+ALTER TABLE public.leaderboard OWNER TO admin;
+
+--
+-- Name: leaderboard_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.leaderboard_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.leaderboard_id_seq OWNER TO admin;
+
+--
+-- Name: leaderboard_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.leaderboard_id_seq OWNED BY public.leaderboard.id;
+
+
+--
+-- Name: level_hardness; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.level_hardness (
+    level integer NOT NULL,
+    rod_price numeric(30,0),
+    rod_time_to_buy double precision,
+    rod_cooldown double precision,
+    net_price numeric(30,0),
+    net_time_to_buy double precision,
+    net_cooldown double precision,
+    net_catch_coef double precision,
+    avg_rod_cost double precision,
+    avg_rod_exp double precision,
+    avg_net_cost double precision,
+    avg_net_exp double precision,
+    cost_per_second double precision,
+    exp_per_second double precision,
+    exp_to_unlock numeric(20,0),
+    time_to_unlock double precision
+);
+
+
+ALTER TABLE public.level_hardness OWNER TO admin;
+
+--
+-- Name: levels; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.levels (
+    level integer NOT NULL,
+    exp_required numeric(20,0)
+);
+
+
+ALTER TABLE public.levels OWNER TO admin;
+
+--
+-- Name: net; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.net (
+    level integer NOT NULL,
+    price numeric(30,0),
+    cooldown double precision,
+    catch_coef double precision
+);
+
+
+ALTER TABLE public.net OWNER TO admin;
+
+--
+-- Name: player; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.player (
+    player_id bigint NOT NULL,
+    name character varying(50),
+    rod_level integer,
+    net_level integer,
+    level integer,
+    experience integer
+);
+
+
+ALTER TABLE public.player OWNER TO admin;
+
+--
+-- Name: promoted_channels; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.promoted_channels (
+    id integer NOT NULL,
+    link character varying(50),
+    taps integer
+);
+
+
+ALTER TABLE public.promoted_channels OWNER TO admin;
+
+--
+-- Name: promoted_channels_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.promoted_channels_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.promoted_channels_id_seq OWNER TO admin;
+
+--
+-- Name: promoted_channels_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.promoted_channels_id_seq OWNED BY public.promoted_channels.id;
+
+
+--
+-- Name: rod; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.rod (
+    level integer NOT NULL,
+    price numeric(30,0),
+    cooldown double precision
+);
+
+
+ALTER TABLE public.rod OWNER TO admin;
+
+--
+-- Name: stats; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.stats (
+    id integer NOT NULL,
+    player_id bigint,
+    balance integer,
+    total_earning integer
+);
+
+
+ALTER TABLE public.stats OWNER TO admin;
+
+--
+-- Name: stats_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.stats_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.stats_id_seq OWNER TO admin;
+
+--
+-- Name: stats_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.stats_id_seq OWNED BY public.stats.id;
+
+
+--
+-- Name: storage; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.storage (
+    id integer NOT NULL,
+    player_id bigint
+);
+
+
+ALTER TABLE public.storage OWNER TO admin;
+
+--
+-- Name: storage_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.storage_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.storage_id_seq OWNER TO admin;
+
+--
+-- Name: storage_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.storage_id_seq OWNED BY public.storage.id;
+
+
+--
+-- Name: fish_caught id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_caught ALTER COLUMN id SET DEFAULT nextval('public.fish_caught_id_seq'::regclass);
+
+
+--
+-- Name: fish_chances id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_chances ALTER COLUMN id SET DEFAULT nextval('public.fish_chances_id_seq'::regclass);
+
+
+--
+-- Name: fish_stored id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_stored ALTER COLUMN id SET DEFAULT nextval('public.fish_stored_id_seq'::regclass);
+
+
+--
+-- Name: last_usages id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.last_usages ALTER COLUMN id SET DEFAULT nextval('public.last_usages_id_seq'::regclass);
+
+
+--
+-- Name: leaderboard id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.leaderboard ALTER COLUMN id SET DEFAULT nextval('public.leaderboard_id_seq'::regclass);
+
+
+--
+-- Name: promoted_channels id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.promoted_channels ALTER COLUMN id SET DEFAULT nextval('public.promoted_channels_id_seq'::regclass);
+
+
+--
+-- Name: stats id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.stats ALTER COLUMN id SET DEFAULT nextval('public.stats_id_seq'::regclass);
+
+
+--
+-- Name: storage id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.storage ALTER COLUMN id SET DEFAULT nextval('public.storage_id_seq'::regclass);
+
+
+--
+-- Data for Name: job; Type: TABLE DATA; Schema: cron; Owner: postgres
+--
+
+COPY cron.job (jobid, schedule, command, nodename, nodeport, database, username, active) FROM stdin;
+2	*/10 * * * *	CALL update_leaderboard()		1324	fishing	postgres	t
+\.
+
+
+--
+-- Data for Name: fish; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.fish (fish_name, cost, experience, id) FROM stdin;
+cod	1	3	\N
+salmon	3	5	\N
+puffer	5	10	\N
+\.
+
+
+--
+-- Data for Name: fish_caught; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.fish_caught (id, stats_id, fish_name, caught_amount) FROM stdin;
+43	15	cod	155
+44	15	salmon	0
+45	15	puffer	0
+85	29	cod	64
+86	29	salmon	0
+87	29	puffer	0
+67	23	cod	42
+68	23	salmon	0
+69	23	puffer	0
+55	19	cod	6
+56	19	salmon	0
+57	19	puffer	0
+61	21	cod	5
+62	21	salmon	0
+63	21	puffer	0
+52	18	cod	6795
+53	18	salmon	9517
+54	18	puffer	14603
+97	33	cod	249
+98	33	salmon	0
+99	33	puffer	0
+73	25	cod	0
+74	25	salmon	0
+75	25	puffer	0
+70	24	cod	8
+71	24	salmon	0
+72	24	puffer	0
+79	27	cod	665
+80	27	salmon	32
+81	27	puffer	0
+58	20	cod	16
+59	20	salmon	0
+60	20	puffer	0
+100	34	cod	47
+101	34	salmon	0
+102	34	puffer	0
+82	28	cod	70
+83	28	salmon	0
+84	28	puffer	0
+49	17	cod	12432
+50	17	salmon	165
+51	17	puffer	123
+88	30	cod	75
+89	30	salmon	0
+90	30	puffer	0
+76	26	cod	4913
+77	26	salmon	1757
+78	26	puffer	1647
+91	31	cod	9686
+92	31	salmon	15327
+93	31	puffer	31723
+103	35	cod	58
+104	35	salmon	0
+105	35	puffer	0
+40	14	cod	1706
+41	14	salmon	0
+42	14	puffer	0
+94	32	cod	355
+95	32	salmon	0
+96	32	puffer	0
+64	22	cod	2890
+65	22	salmon	1053
+66	22	puffer	603
+\.
+
+
+--
+-- Data for Name: fish_chances; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.fish_chances (id, fish_name, rod_level, net_level, catch_chance) FROM stdin;
+1210	cod	0	0	1.000
+1211	salmon	0	0	0.000
+1212	puffer	0	0	0.000
+1213	cod	1	1	1.000
+1214	salmon	1	1	0.000
+1215	puffer	1	1	0.000
+1216	cod	2	2	1.000
+1217	salmon	2	2	0.000
+1218	puffer	2	2	0.000
+1219	cod	3	3	1.000
+1220	salmon	3	3	0.000
+1221	puffer	3	3	0.000
+1222	cod	4	4	1.000
+1223	salmon	4	4	0.000
+1224	puffer	4	4	0.000
+1225	cod	5	5	1.000
+1226	salmon	5	5	0.000
+1227	puffer	5	5	0.000
+1228	cod	6	6	0.850
+1229	salmon	6	6	0.150
+1230	puffer	6	6	0.000
+1231	cod	7	7	0.700
+1232	salmon	7	7	0.300
+1233	puffer	7	7	0.000
+1234	cod	8	8	0.550
+1235	salmon	8	8	0.450
+1236	puffer	8	8	0.000
+1237	cod	9	9	0.400
+1238	salmon	9	9	0.600
+1239	puffer	9	9	0.000
+1240	cod	10	10	0.200
+1241	salmon	10	10	0.750
+1242	puffer	10	10	0.050
+1243	cod	11	11	0.160
+1244	salmon	11	11	0.675
+1245	puffer	11	11	0.165
+1246	cod	12	12	0.128
+1247	salmon	12	12	0.608
+1248	puffer	12	12	0.264
+1249	cod	13	13	0.102
+1250	salmon	13	13	0.547
+1251	puffer	13	13	0.351
+1252	cod	14	14	0.082
+1253	salmon	14	14	0.492
+1254	puffer	14	14	0.426
+1255	cod	15	15	0.066
+1256	salmon	15	15	0.443
+1257	puffer	15	15	0.491
+1258	cod	16	16	0.053
+1259	salmon	16	16	0.399
+1260	puffer	16	16	0.548
+1261	cod	17	17	0.042
+1262	salmon	17	17	0.359
+1263	puffer	17	17	0.599
+1264	cod	18	18	0.034
+1265	salmon	18	18	0.323
+1266	puffer	18	18	0.643
+1267	cod	19	19	0.027
+1268	salmon	19	19	0.291
+1269	puffer	19	19	0.682
+1270	cod	20	20	0.022
+1271	salmon	20	20	0.262
+1272	puffer	20	20	0.716
+1273	cod	21	21	0.018
+1274	salmon	21	21	0.236
+1275	puffer	21	21	0.746
+1276	cod	22	22	0.014
+1277	salmon	22	22	0.212
+1278	puffer	22	22	0.774
+1279	cod	23	23	0.011
+1280	salmon	23	23	0.191
+1281	puffer	23	23	0.798
+1282	cod	24	24	0.009
+1283	salmon	24	24	0.172
+1284	puffer	24	24	0.819
+1285	cod	25	25	0.007
+1286	salmon	25	25	0.155
+1287	puffer	25	25	0.838
+1288	cod	26	26	0.006
+1289	salmon	26	26	0.140
+1290	puffer	26	26	0.854
+1291	cod	27	27	0.005
+1292	salmon	27	27	0.126
+1293	puffer	27	27	0.869
+1294	cod	28	28	0.004
+1295	salmon	28	28	0.113
+1296	puffer	28	28	0.883
+1297	cod	29	29	0.003
+1298	salmon	29	29	0.102
+1299	puffer	29	29	0.895
+1300	cod	30	30	0.002
+1301	salmon	30	30	0.092
+1302	puffer	30	30	0.906
+1303	cod	31	31	0.002
+1304	salmon	31	31	0.083
+1305	puffer	31	31	0.915
+1306	cod	32	32	0.002
+1307	salmon	32	32	0.075
+1308	puffer	32	32	0.923
+1309	cod	33	33	0.002
+1310	salmon	33	33	0.068
+1311	puffer	33	33	0.930
+1312	cod	34	34	0.002
+1313	salmon	34	34	0.061
+1314	puffer	34	34	0.937
+1315	cod	35	35	0.002
+1316	salmon	35	35	0.055
+1317	puffer	35	35	0.943
+1318	cod	36	36	0.002
+1319	salmon	36	36	0.050
+1320	puffer	36	36	0.948
+1321	cod	37	37	0.002
+1322	salmon	37	37	0.045
+1323	puffer	37	37	0.953
+1324	cod	38	38	0.002
+1325	salmon	38	38	0.041
+1326	puffer	38	38	0.957
+1327	cod	39	39	0.002
+1328	salmon	39	39	0.037
+1329	puffer	39	39	0.961
+1330	cod	40	40	0.002
+1331	salmon	40	40	0.033
+1332	puffer	40	40	0.965
+1333	cod	41	41	0.002
+1334	salmon	41	41	0.030
+1335	puffer	41	41	0.968
+1336	cod	42	42	0.002
+1337	salmon	42	42	0.027
+1338	puffer	42	42	0.971
+1339	cod	43	43	0.002
+1340	salmon	43	43	0.024
+1341	puffer	43	43	0.974
+1342	cod	44	44	0.002
+1343	salmon	44	44	0.022
+1344	puffer	44	44	0.976
+1345	cod	45	45	0.002
+1346	salmon	45	45	0.020
+1347	puffer	45	45	0.978
+1348	cod	46	46	0.002
+1349	salmon	46	46	0.018
+1350	puffer	46	46	0.980
+1351	cod	47	47	0.002
+1352	salmon	47	47	0.016
+1353	puffer	47	47	0.982
+1354	cod	48	48	0.002
+1355	salmon	48	48	0.014
+1356	puffer	48	48	0.984
+1357	cod	49	49	0.002
+1358	salmon	49	49	0.013
+1359	puffer	49	49	0.985
+1360	cod	50	50	0.002
+1361	salmon	50	50	0.012
+1362	puffer	50	50	0.986
+1363	cod	51	51	0.002
+1364	salmon	51	51	0.011
+1365	puffer	51	51	0.987
+1366	cod	52	52	0.002
+1367	salmon	52	52	0.010
+1368	puffer	52	52	0.988
+1369	cod	53	53	0.002
+1370	salmon	53	53	0.009
+1371	puffer	53	53	0.989
+1372	cod	54	54	0.002
+1373	salmon	54	54	0.008
+1374	puffer	54	54	0.990
+1375	cod	55	55	0.002
+1376	salmon	55	55	0.007
+1377	puffer	55	55	0.991
+1378	cod	56	56	0.002
+1379	salmon	56	56	0.006
+1380	puffer	56	56	0.992
+1381	cod	57	57	0.002
+1382	salmon	57	57	0.005
+1383	puffer	57	57	0.993
+1384	cod	58	58	0.002
+1385	salmon	58	58	0.005
+1386	puffer	58	58	0.993
+1387	cod	59	59	0.002
+1388	salmon	59	59	0.005
+1389	puffer	59	59	0.993
+1390	cod	60	60	0.002
+1391	salmon	60	60	0.005
+1392	puffer	60	60	0.993
+1393	cod	61	61	0.002
+1394	salmon	61	61	0.005
+1395	puffer	61	61	0.993
+1396	cod	62	62	0.002
+1397	salmon	62	62	0.005
+1398	puffer	62	62	0.993
+1399	cod	63	63	0.002
+1400	salmon	63	63	0.005
+1401	puffer	63	63	0.993
+1402	cod	64	64	0.002
+1403	salmon	64	64	0.005
+1404	puffer	64	64	0.993
+1405	cod	65	65	0.002
+1406	salmon	65	65	0.005
+1407	puffer	65	65	0.993
+1408	cod	66	66	0.002
+1409	salmon	66	66	0.005
+1410	puffer	66	66	0.993
+1411	cod	67	67	0.002
+1412	salmon	67	67	0.005
+1413	puffer	67	67	0.993
+1414	cod	68	68	0.002
+1415	salmon	68	68	0.005
+1416	puffer	68	68	0.993
+1417	cod	69	69	0.002
+1418	salmon	69	69	0.005
+1419	puffer	69	69	0.993
+1420	cod	70	70	0.002
+1421	salmon	70	70	0.005
+1422	puffer	70	70	0.993
+1423	cod	71	71	0.002
+1424	salmon	71	71	0.005
+1425	puffer	71	71	0.993
+1426	cod	72	72	0.002
+1427	salmon	72	72	0.005
+1428	puffer	72	72	0.993
+1429	cod	73	73	0.002
+1430	salmon	73	73	0.005
+1431	puffer	73	73	0.993
+1432	cod	74	74	0.002
+1433	salmon	74	74	0.005
+1434	puffer	74	74	0.993
+1435	cod	75	75	0.002
+1436	salmon	75	75	0.005
+1437	puffer	75	75	0.993
+1438	cod	76	76	0.002
+1439	salmon	76	76	0.005
+1440	puffer	76	76	0.993
+1441	cod	77	77	0.002
+1442	salmon	77	77	0.005
+1443	puffer	77	77	0.993
+1444	cod	78	78	0.002
+1445	salmon	78	78	0.005
+1446	puffer	78	78	0.993
+1447	cod	79	79	0.002
+1448	salmon	79	79	0.005
+1449	puffer	79	79	0.993
+1450	cod	80	80	0.002
+1451	salmon	80	80	0.005
+1452	puffer	80	80	0.993
+1453	cod	81	81	0.002
+1454	salmon	81	81	0.005
+1455	puffer	81	81	0.993
+1456	cod	82	82	0.002
+1457	salmon	82	82	0.005
+1458	puffer	82	82	0.993
+1459	cod	83	83	0.002
+1460	salmon	83	83	0.005
+1461	puffer	83	83	0.993
+1462	cod	84	84	0.002
+1463	salmon	84	84	0.005
+1464	puffer	84	84	0.993
+1465	cod	85	85	0.002
+1466	salmon	85	85	0.005
+1467	puffer	85	85	0.993
+1468	cod	86	86	0.002
+1469	salmon	86	86	0.005
+1470	puffer	86	86	0.993
+1471	cod	87	87	0.002
+1472	salmon	87	87	0.005
+1473	puffer	87	87	0.993
+1474	cod	88	88	0.002
+1475	salmon	88	88	0.005
+1476	puffer	88	88	0.993
+1477	cod	89	89	0.002
+1478	salmon	89	89	0.005
+1479	puffer	89	89	0.993
+1480	cod	90	90	0.002
+1481	salmon	90	90	0.005
+1482	puffer	90	90	0.993
+1483	cod	91	91	0.002
+1484	salmon	91	91	0.005
+1485	puffer	91	91	0.993
+1486	cod	92	92	0.002
+1487	salmon	92	92	0.005
+1488	puffer	92	92	0.993
+1489	cod	93	93	0.002
+1490	salmon	93	93	0.005
+1491	puffer	93	93	0.993
+1492	cod	94	94	0.002
+1493	salmon	94	94	0.005
+1494	puffer	94	94	0.993
+1495	cod	95	95	0.002
+1496	salmon	95	95	0.005
+1497	puffer	95	95	0.993
+1498	cod	96	96	0.002
+1499	salmon	96	96	0.005
+1500	puffer	96	96	0.993
+1501	cod	97	97	0.002
+1502	salmon	97	97	0.005
+1503	puffer	97	97	0.993
+1504	cod	98	98	0.002
+1505	salmon	98	98	0.005
+1506	puffer	98	98	0.993
+1507	cod	99	99	0.002
+1508	salmon	99	99	0.005
+1509	puffer	99	99	0.993
+1510	cod	100	100	0.002
+1511	salmon	100	100	0.005
+1512	puffer	100	100	0.993
+1513	cod	101	101	0.002
+1514	salmon	101	101	0.005
+1515	puffer	101	101	0.993
+1516	cod	102	102	0.002
+1517	salmon	102	102	0.005
+1518	puffer	102	102	0.993
+1519	cod	103	103	0.002
+1520	salmon	103	103	0.005
+1521	puffer	103	103	0.993
+1522	cod	104	104	0.002
+1523	salmon	104	104	0.005
+1524	puffer	104	104	0.993
+1525	cod	105	105	0.002
+1526	salmon	105	105	0.005
+1527	puffer	105	105	0.993
+1528	cod	106	106	0.002
+1529	salmon	106	106	0.005
+1530	puffer	106	106	0.993
+1531	cod	107	107	0.002
+1532	salmon	107	107	0.005
+1533	puffer	107	107	0.993
+1534	cod	108	108	0.002
+1535	salmon	108	108	0.005
+1536	puffer	108	108	0.993
+1537	cod	109	109	0.002
+1538	salmon	109	109	0.005
+1539	puffer	109	109	0.993
+1540	cod	110	110	0.002
+1541	salmon	110	110	0.005
+1542	puffer	110	110	0.993
+1543	cod	111	111	0.002
+1544	salmon	111	111	0.005
+1545	puffer	111	111	0.993
+1546	cod	112	112	0.002
+1547	salmon	112	112	0.005
+1548	puffer	112	112	0.993
+1549	cod	113	113	0.002
+1550	salmon	113	113	0.005
+1551	puffer	113	113	0.993
+1552	cod	114	114	0.002
+1553	salmon	114	114	0.005
+1554	puffer	114	114	0.993
+1555	cod	115	115	0.002
+1556	salmon	115	115	0.005
+1557	puffer	115	115	0.993
+1558	cod	116	116	0.002
+1559	salmon	116	116	0.005
+1560	puffer	116	116	0.993
+1561	cod	117	117	0.002
+1562	salmon	117	117	0.005
+1563	puffer	117	117	0.993
+1564	cod	118	118	0.002
+1565	salmon	118	118	0.005
+1566	puffer	118	118	0.993
+1567	cod	119	119	0.002
+1568	salmon	119	119	0.005
+1569	puffer	119	119	0.993
+1570	cod	120	120	0.002
+1571	salmon	120	120	0.005
+1572	puffer	120	120	0.993
+1573	cod	121	121	0.002
+1574	salmon	121	121	0.005
+1575	puffer	121	121	0.993
+1576	cod	122	122	0.002
+1577	salmon	122	122	0.005
+1578	puffer	122	122	0.993
+1579	cod	123	123	0.002
+1580	salmon	123	123	0.005
+1581	puffer	123	123	0.993
+1582	cod	124	124	0.002
+1583	salmon	124	124	0.005
+1584	puffer	124	124	0.993
+1585	cod	125	125	0.002
+1586	salmon	125	125	0.005
+1587	puffer	125	125	0.993
+1588	cod	126	126	0.002
+1589	salmon	126	126	0.005
+1590	puffer	126	126	0.993
+1591	cod	127	127	0.002
+1592	salmon	127	127	0.005
+1593	puffer	127	127	0.993
+1594	cod	128	128	0.002
+1595	salmon	128	128	0.005
+1596	puffer	128	128	0.993
+1597	cod	129	129	0.002
+1598	salmon	129	129	0.005
+1599	puffer	129	129	0.993
+1600	cod	130	130	0.002
+1601	salmon	130	130	0.005
+1602	puffer	130	130	0.993
+1603	cod	131	131	0.002
+1604	salmon	131	131	0.005
+1605	puffer	131	131	0.993
+1606	cod	132	132	0.002
+1607	salmon	132	132	0.005
+1608	puffer	132	132	0.993
+1609	cod	133	133	0.002
+1610	salmon	133	133	0.005
+1611	puffer	133	133	0.993
+1612	cod	134	134	0.002
+1613	salmon	134	134	0.005
+1614	puffer	134	134	0.993
+1615	cod	135	135	0.002
+1616	salmon	135	135	0.005
+1617	puffer	135	135	0.993
+1618	cod	136	136	0.002
+1619	salmon	136	136	0.005
+1620	puffer	136	136	0.993
+1621	cod	137	137	0.002
+1622	salmon	137	137	0.005
+1623	puffer	137	137	0.993
+1624	cod	138	138	0.002
+1625	salmon	138	138	0.005
+1626	puffer	138	138	0.993
+1627	cod	139	139	0.002
+1628	salmon	139	139	0.005
+1629	puffer	139	139	0.993
+1630	cod	140	140	0.002
+1631	salmon	140	140	0.005
+1632	puffer	140	140	0.993
+1633	cod	141	141	0.002
+1634	salmon	141	141	0.005
+1635	puffer	141	141	0.993
+1636	cod	142	142	0.002
+1637	salmon	142	142	0.005
+1638	puffer	142	142	0.993
+1639	cod	143	143	0.002
+1640	salmon	143	143	0.005
+1641	puffer	143	143	0.993
+1642	cod	144	144	0.002
+1643	salmon	144	144	0.005
+1644	puffer	144	144	0.993
+1645	cod	145	145	0.002
+1646	salmon	145	145	0.005
+1647	puffer	145	145	0.993
+1648	cod	146	146	0.002
+1649	salmon	146	146	0.005
+1650	puffer	146	146	0.993
+1651	cod	147	147	0.002
+1652	salmon	147	147	0.005
+1653	puffer	147	147	0.993
+1654	cod	148	148	0.002
+1655	salmon	148	148	0.005
+1656	puffer	148	148	0.993
+1657	cod	149	149	0.002
+1658	salmon	149	149	0.005
+1659	puffer	149	149	0.993
+1660	cod	150	150	0.002
+1661	salmon	150	150	0.005
+1662	puffer	150	150	0.993
+1663	cod	151	151	0.002
+1664	salmon	151	151	0.005
+1665	puffer	151	151	0.993
+1666	cod	152	152	0.002
+1667	salmon	152	152	0.005
+1668	puffer	152	152	0.993
+1669	cod	153	153	0.002
+1670	salmon	153	153	0.005
+1671	puffer	153	153	0.993
+1672	cod	154	154	0.002
+1673	salmon	154	154	0.005
+1674	puffer	154	154	0.993
+1675	cod	155	155	0.002
+1676	salmon	155	155	0.005
+1677	puffer	155	155	0.993
+1678	cod	156	156	0.002
+1679	salmon	156	156	0.005
+1680	puffer	156	156	0.993
+1681	cod	157	157	0.002
+1682	salmon	157	157	0.005
+1683	puffer	157	157	0.993
+1684	cod	158	158	0.002
+1685	salmon	158	158	0.005
+1686	puffer	158	158	0.993
+1687	cod	159	159	0.002
+1688	salmon	159	159	0.005
+1689	puffer	159	159	0.993
+1690	cod	160	160	0.002
+1691	salmon	160	160	0.005
+1692	puffer	160	160	0.993
+1693	cod	161	161	0.002
+1694	salmon	161	161	0.005
+1695	puffer	161	161	0.993
+1696	cod	162	162	0.002
+1697	salmon	162	162	0.005
+1698	puffer	162	162	0.993
+1699	cod	163	163	0.002
+1700	salmon	163	163	0.005
+1701	puffer	163	163	0.993
+1702	cod	164	164	0.002
+1703	salmon	164	164	0.005
+1704	puffer	164	164	0.993
+1705	cod	165	165	0.002
+1706	salmon	165	165	0.005
+1707	puffer	165	165	0.993
+1708	cod	166	166	0.002
+1709	salmon	166	166	0.005
+1710	puffer	166	166	0.993
+1711	cod	167	167	0.002
+1712	salmon	167	167	0.005
+1713	puffer	167	167	0.993
+1714	cod	168	168	0.002
+1715	salmon	168	168	0.005
+1716	puffer	168	168	0.993
+1717	cod	169	169	0.002
+1718	salmon	169	169	0.005
+1719	puffer	169	169	0.993
+1720	cod	170	170	0.002
+1721	salmon	170	170	0.005
+1722	puffer	170	170	0.993
+1723	cod	171	171	0.002
+1724	salmon	171	171	0.005
+1725	puffer	171	171	0.993
+1726	cod	172	172	0.002
+1727	salmon	172	172	0.005
+1728	puffer	172	172	0.993
+1729	cod	173	173	0.002
+1730	salmon	173	173	0.005
+1731	puffer	173	173	0.993
+1732	cod	174	174	0.002
+1733	salmon	174	174	0.005
+1734	puffer	174	174	0.993
+1735	cod	175	175	0.002
+1736	salmon	175	175	0.005
+1737	puffer	175	175	0.993
+1738	cod	176	176	0.002
+1739	salmon	176	176	0.005
+1740	puffer	176	176	0.993
+1741	cod	177	177	0.002
+1742	salmon	177	177	0.005
+1743	puffer	177	177	0.993
+1744	cod	178	178	0.002
+1745	salmon	178	178	0.005
+1746	puffer	178	178	0.993
+1747	cod	179	179	0.002
+1748	salmon	179	179	0.005
+1749	puffer	179	179	0.993
+1750	cod	180	180	0.002
+1751	salmon	180	180	0.005
+1752	puffer	180	180	0.993
+1753	cod	181	181	0.002
+1754	salmon	181	181	0.005
+1755	puffer	181	181	0.993
+1756	cod	182	182	0.002
+1757	salmon	182	182	0.005
+1758	puffer	182	182	0.993
+1759	cod	183	183	0.002
+1760	salmon	183	183	0.005
+1761	puffer	183	183	0.993
+1762	cod	184	184	0.002
+1763	salmon	184	184	0.005
+1764	puffer	184	184	0.993
+1765	cod	185	185	0.002
+1766	salmon	185	185	0.005
+1767	puffer	185	185	0.993
+1768	cod	186	186	0.002
+1769	salmon	186	186	0.005
+1770	puffer	186	186	0.993
+1771	cod	187	187	0.002
+1772	salmon	187	187	0.005
+1773	puffer	187	187	0.993
+1774	cod	188	188	0.002
+1775	salmon	188	188	0.005
+1776	puffer	188	188	0.993
+1777	cod	189	189	0.002
+1778	salmon	189	189	0.005
+1779	puffer	189	189	0.993
+1780	cod	190	190	0.002
+1781	salmon	190	190	0.005
+1782	puffer	190	190	0.993
+1783	cod	191	191	0.002
+1784	salmon	191	191	0.005
+1785	puffer	191	191	0.993
+1786	cod	192	192	0.002
+1787	salmon	192	192	0.005
+1788	puffer	192	192	0.993
+1789	cod	193	193	0.002
+1790	salmon	193	193	0.005
+1791	puffer	193	193	0.993
+1792	cod	194	194	0.002
+1793	salmon	194	194	0.005
+1794	puffer	194	194	0.993
+1795	cod	195	195	0.002
+1796	salmon	195	195	0.005
+1797	puffer	195	195	0.993
+1798	cod	196	196	0.002
+1799	salmon	196	196	0.005
+1800	puffer	196	196	0.993
+1801	cod	197	197	0.002
+1802	salmon	197	197	0.005
+1803	puffer	197	197	0.993
+1804	cod	198	198	0.002
+1805	salmon	198	198	0.005
+1806	puffer	198	198	0.993
+1807	cod	199	199	0.002
+1808	salmon	199	199	0.005
+1809	puffer	199	199	0.993
+1810	cod	200	200	0.002
+1811	salmon	200	200	0.005
+1812	puffer	200	200	0.993
+\.
+
+
+--
+-- Data for Name: fish_stored; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.fish_stored (id, storage_id, fish_name, stored_amount) FROM stdin;
+90	30	puffer	0
+88	30	cod	0
+89	30	salmon	0
+103	35	cod	0
+55	19	cod	6
+56	19	salmon	0
+57	19	puffer	0
+61	21	cod	5
+62	21	salmon	0
+63	21	puffer	0
+85	29	cod	61
+86	29	salmon	0
+87	29	puffer	0
+104	35	salmon	0
+105	35	puffer	0
+67	23	cod	42
+68	23	salmon	0
+69	23	puffer	0
+100	34	cod	0
+101	34	salmon	0
+102	34	puffer	0
+64	22	cod	0
+65	22	salmon	0
+66	22	puffer	0
+82	28	cod	70
+83	28	salmon	0
+84	28	puffer	0
+94	32	cod	11
+95	32	salmon	0
+96	32	puffer	0
+43	15	cod	0
+44	15	salmon	0
+45	15	puffer	0
+58	20	cod	6
+59	20	salmon	0
+60	20	puffer	0
+73	25	cod	0
+74	25	salmon	0
+75	25	puffer	0
+76	26	cod	0
+77	26	salmon	40
+78	26	puffer	135
+79	27	cod	0
+80	27	salmon	0
+81	27	puffer	0
+70	24	cod	0
+71	24	salmon	0
+72	24	puffer	0
+52	18	cod	0
+53	18	salmon	0
+54	18	puffer	0
+49	17	cod	236
+50	17	salmon	30
+51	17	puffer	33
+40	14	cod	1104
+41	14	salmon	0
+42	14	puffer	0
+97	33	cod	7
+98	33	salmon	0
+99	33	puffer	0
+91	31	cod	0
+92	31	salmon	0
+93	31	puffer	0
+\.
+
+
+--
+-- Data for Name: last_usages; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.last_usages (id, player_id, rod_last_use, net_last_use) FROM stdin;
+10	983520782	2024-01-31 04:59:56	2024-01-31 05:00:00
+9	5128641039	2024-02-02 12:44:42	2024-02-02 12:42:11
+19	470136463	2024-01-24 21:48:36	2024-01-24 21:48:06
+23	1555747001	2024-02-02 17:17:01	2024-02-02 17:12:58
+24	844545726	2024-01-25 08:47:36	2024-01-25 08:47:08
+22	1036816687	2024-01-24 18:45:59	2024-01-24 18:45:13
+27	767951103	2024-02-02 18:02:53	2024-02-02 17:49:37
+7	310811454	2024-01-24 10:43:29	2024-01-24 10:41:36
+11	1572193034	2024-01-24 18:24:56	\N
+13	259940924	2024-01-24 18:27:21	\N
+20	914242903	2024-01-24 18:38:22	2024-01-24 18:37:39
+12	866117678	2024-01-24 18:29:10	\N
+21	464533374	2024-01-24 18:40:26	2024-01-24 18:40:11
+15	309134020	2024-01-24 18:31:32	2024-01-24 18:31:39
+6	5585165466	2024-01-24 15:15:05	2024-01-25 10:37:12
+17	6259057766	\N	\N
+16	1793715178	2024-01-24 18:33:32	\N
+18	1274941064	2024-01-25 18:41:43	2024-01-25 18:38:05
+25	6091578104	2024-01-27 14:41:37	2024-01-27 14:40:47
+26	229135625	2024-01-27 19:28:22	2024-01-27 19:28:33
+14	912161040	2024-01-28 11:57:55	2024-01-28 11:57:46
+\.
+
+
+--
+-- Data for Name: leaderboard; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.leaderboard (id, player_id, rank) FROM stdin;
+35	767951103	11
+34	229135625	12
+33	6091578104	8
+30	1036816687	10
+31	1555747001	1
+18	983520782	2
+17	5128641039	4
+14	5585165466	9
+22	912161040	5
+26	1274941064	3
+20	866117678	13
+24	1793715178	14
+27	470136463	6
+23	309134020	16
+15	310811454	16
+19	1572193034	16
+25	6259057766	16
+21	259940924	16
+28	914242903	16
+29	464533374	15
+32	844545726	7
+\.
+
+
+--
+-- Data for Name: level_hardness; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.level_hardness (level, rod_price, rod_time_to_buy, rod_cooldown, net_price, net_time_to_buy, net_cooldown, net_catch_coef, avg_rod_cost, avg_rod_exp, avg_net_cost, avg_net_exp, cost_per_second, exp_per_second, exp_to_unlock, time_to_unlock) FROM stdin;
+1	20	18.41743010395405	4.85	147	135.36811126406226	100	1.1	1.0309278350515465	3.0927835051546393	0.055	0.165	1.0859278350515464	3.2577835051546393	65	20
+2	23	17.070233693721324	4.7045	169	125.42910844516973	100	1.2	1.275374641300882	3.8261239239026463	0.072	0.21599999999999997	1.347374641300882	4.042123923902646	85	21
+3	26	16.000435663387712	4.563365	195	120.00326747540784	100	1.3	1.5339557541419544	4.601867262425864	0.091	0.273	1.6249557541419544	4.874867262425863	107	22.05
+4	30	15.630603900090438	4.42646405	224	116.70850912067527	100	1.4	1.8073116396370599	5.421934918911179	0.11199999999999999	0.33599999999999997	1.9193116396370598	5.75793491891118	133	23.1525
+5	35	15.687266821066443	4.2936701285	257	115.1893592289736	100	1.5	2.0961088604038065	6.28832658121142	0.135	0.405	2.2311088604038067	6.69332658121142	163	24.310125
+6	40	12.014344886165588	4.164860024645	296	88.90615215762536	100	1.6	3.1213534003722203	7.923435554791021	0.20800000000000002	0.528	3.3293534003722205	8.45143555479102	216	25.52563125
+7	46	9.880301988401344	4.03991422390565	340	73.02831904470558	100	1.7	4.356528140091283	9.802188315205385	0.2992	0.6731999999999999	4.655728140091283	10.475388315205384	281	26.8019128125
+8	53	8.509092772079741	3.9187167971884804	391	62.77462780911659	100	1.8	5.818231114929783	11.942684920119028	0.4104	0.8424	6.228631114929783	12.785084920119028	360	28.142008453125
+9	61	7.5612695558220056	3.801155293272826	450	55.77985737901479	100	1.9	7.524028300189536	14.36405402763457	0.5433999999999999	1.0373999999999999	8.067428300189535	15.40145402763457	455	29.54910887578125
+10	70	6.359068147313257	3.6871206344746414	518	47.057104290118104	100	2	10.251902160881135	18.41545388158278	0.7559999999999999	1.358	11.007902160881136	19.773453881582782	614	31.026564319570312
+11	81	5.968082230881776	3.576507015440402	595	43.83961638734144	100	2.1	12.624049052631412	23.08816944675612	0.9481500000000002	1.734075	13.572199052631412	24.82224444675612	809	32.57789253554883
+12	93	5.725824109764242	3.46921180497719	684	42.1125128072983	100	2.2	15.090459430840147	27.96715953197269	1.151744	2.1345280000000004	16.242203430840146	30.10168753197269	1030	34.20678716232627
+13	107	5.620065658919987	3.3651354508278746	787	41.336370781028315	100	2.3	17.67120547417206	33.09435879396831	1.3677179999999998	2.561441	19.03892347417206	35.65579979396831	1281	35.91712652044259
+14	123	5.608673002752585	3.264181387303038	905	41.26706558935845	100	2.4	20.337105118673687	38.41330646873127	1.593216	3.009312	21.93032111867369	41.42261846873127	1562	37.71298284646471
+15	142	5.6955496501697604	3.166255945683947	1041	41.753994266385355	100	2.5	23.102996490133325	43.94369955772632	1.82875	3.4784249999999997	24.931746490133325	47.42212455772632	1878	39.59863198878795
+16	163	5.809487700287112	3.0712682673134286	1197	42.66231151683235	100	2.6	25.982751441574504	49.71236203132324	2.0748	3.9696800000000008	28.057551441574503	53.68204203132324	2232	41.57856358822735
+17	187	5.9682671892103905	2.9791302192940257	1377	43.94814930236742	100	2.7	28.99973940060702	55.76493398108949	2.332638	4.485537	31.33237740060702	60.25047098108949	2630	43.65749176763871
+18	215	6.194119984914016	2.889756312715205	1583	45.60600900520413	100	2.8	32.11205027624257	62.02391503095026	2.598288	5.018552000000001	34.71033827624257	67.04246703095026	3073	45.840366356020645
+19	248	6.485415532393588	2.8030636233337485	1821	47.62073259874485	100	2.9	35.364876906398	68.56355253593081	2.87477	5.573452	38.239646906398	74.13700453593081	3568	48.13238467382168
+20	285	6.80326514674221	2.7189717146337364	2094	49.98609549922171	100	3	38.73228964950311	75.34613136922484	3.15936	6.14592	41.89164964950311	81.49205136922484	4119	50.539003907512765
+21	327	7.156625245966478	2.637402563194724	2408	52.700775511581895	100	3.1	42.23852723683546	82.41062742303579	3.4534	6.73785	45.69192723683546	89.14847742303579	4731	53.065954102888405
+22	376	7.565735587897407	2.5582804862988824	2769	55.71681341193596	100	3.2	45.937105266365315	89.86192140823054	3.7606400000000004	7.356544000000001	49.69774526636532	97.21846540823054	5417	55.71925180803282
+23	433	8.04200860844617	2.481532071709916	3184	59.13569378589517	100	3.3	49.76683614445607	97.57520475371274	4.0754340000000004	7.990488	53.84227014445607	105.56569275371274	6176	58.50521439843446
+24	498	8.565595374309584	2.4070861095586187	3662	62.98636598538493	100	3.4	53.74132628089504	105.58658412374119	4.39824	8.641304	58.13956628089504	114.2278881237412	7017	61.430475118356185
+25	573	9.148136290416103	2.33487352627186	4211	67.23002080094626	100	3.5	57.90377871810187	113.96934223880369	4.73193	9.31364	62.63570871810187	123.2829822388037	7952	64.501998874274
+26	658	9.780736435629663	2.264827320483704	4843	71.98800388716482	100	3.6	62.2034177731095	122.63186578863879	5.07168	9.99864	67.2750977731095	132.6305057886388	8983	67.7270988179877
+27	757	10.493575910306793	2.196882500869193	5569	77.19778632034152	100	3.7	66.71635826768642	131.72529704501963	5.4230160000000005	10.707245	72.13937426768642	142.43254204501963	10129	71.11345375888708
+28	871	11.277317650869216	2.130976025843117	6404	82.91612197034037	100	3.8	71.44895022446823	141.26109179520233	5.785728000000001	11.438912	77.23467822446824	152.70000379520232	11402	74.66912644683144
+29	1001	12.128534952549881	2.0670467450678234	7365	89.23742250302685	100	3.9	76.37563126073375	151.17074674077926	6.157007999999999	12.186603	82.53263926073376	163.35734974077926	12808	78.40258276917301
+30	1152	13.080561711048047	2.005035342715789	8470	96.17392160813972	100	4	81.53073241022263	161.53530718381464	6.538880000000001	12.95536	88.06961241022263	174.49066718381465	14365	82.32271190763166
+31	1324	14.11910267469913	1.9448842824343155	9740	103.86711484257518	100	4.1	86.84835469418452	172.2390391168753	6.92531	13.734384999999998	93.77366469418452	185.9734241168753	16075	86.43884750301324
+32	1523	15.272926573035061	1.886537753961286	11201	112.3257062012907	100	4.2	92.39783282045947	183.40263759550518	7.321104000000002	14.531832000000001	99.71893682045948	197.9344695955052	17965	90.7607898781639
+33	1751	16.532835216024402	1.8299416213424475	12881	121.62161645780145	100	4.3	98.18455294119843	195.03463708212522	7.7258960000000005	15.346786000000002	105.91044894119844	210.38142308212522	20049	95.29882937207209
+34	2014	17.918269444393648	1.775043372702174	14814	131.79803552594214	100	4.4	104.25660738547505	207.25014704287142	8.142640000000002	16.186632000000003	112.39924738547505	223.43677904287142	22358	100.0637708406757
+35	2316	19.43781300105194	1.7217920715211086	17036	142.98038958804872	100	4.5	110.58129674844758	219.9621001073688	8.56791	17.042804999999998	119.14920674844758	237.00490510736878	24901	105.06695938270948
+36	2664	21.11516792190203	1.6701383093754756	19591	155.2805010352788	100	4.6	117.16394917806043	233.17829296761988	9.001279999999998	17.914239999999996	126.16522917806043	251.0925329676199	27701	110.32030735184496
+37	3063	22.942702998055363	1.620034160094211	22530	168.75582714534357	100	4.7	124.06034696719736	247.03244527678774	9.446154	18.809447	133.50650096719735	265.84189227678775	30794	115.8363227194372
+38	3522	24.95587586429017	1.571433135291385	25909	183.58369896873765	100	4.8	131.23052796119217	261.418695313324	9.89856	19.718496000000002	141.12908796119217	281.137191313324	34194	121.62813885540908
+39	4051	27.169998126991516	1.5242901412326435	29795	199.83463199054856	100	4.9	138.73605442923608	276.48476402215186	10.362226	20.650707	149.09828042923607	297.1354710221519	37947	127.70954579817952
+40	4658	29.58806611477905	1.478561436995664	34265	217.65459111698243	100	5	146.59113552995743	292.259752748622	10.837200000000001	21.606199999999998	157.42833552995742	313.865952748622	42088	134.0950230880885
+41	5357	32.258115786240026	1.434204593885794	39404	237.27810237838378	100	5.1	154.74779605794032	308.6170563718372	11.318939999999998	22.573619999999995	166.06673605794032	331.1906763718372	46632	140.79977424249293
+42	6161	35.18779965281079	1.39117845606922	45315	258.8110925608052	100	5.2	163.27739910651545	325.7281609150027	11.811696	23.563592	175.08909510651546	349.2917529150027	51639	147.83976295461758
+43	7085	38.39879840542213	1.3494431023871436	52112	282.43305328205474	100	5.3	172.19547796342408	343.62471391325687	12.315503999999999	24.576206	184.5109819634241	368.2009199132569	57156	155.23175110234845
+44	8148	41.941616064077515	1.3089598093155295	59929	308.48295398921226	100	5.4	181.44483757999694	362.1562683791531	12.825216000000003	25.598592000000004	194.27005357999695	387.7548603791531	63201	162.99333865746587
+45	9370	45.829479918041926	1.2696910150360634	68918	337.08389508982	100	5.5	191.10791296976137	381.52116874375224	13.345640000000001	26.64277	204.45355296976138	408.1639387437522	69854	171.14300559033916
+46	10775	50.09800090303474	1.2316002845849816	79256	368.49811225716206	100	5.6	201.20164236849166	401.7537233411205	13.876800000000001	27.7088	215.07844236849166	429.4625233411205	77174	179.70015586985613
+47	12392	54.79249944362242	1.194652276047432	91144	403.0025475540285	100	5.7	211.7436220327902	422.8895806162943	14.41872	28.796742	226.1623420327902	451.6863226162943	85227	188.68516366334893
+48	14250	59.94357607677725	1.158812707766009	104816	440.9154996535778	100	5.8	222.7521309268572	444.9657796677511	14.971424000000003	29.906656	237.72355492685722	474.8724356677511	94081	198.1194218465164
+49	16388	65.63587311095723	1.124048326533029	120539	482.77291365155446	100	5.9	234.15185431732965	467.78504766053715	15.528681999999998	31.022966999999998	249.68053631732965	498.80801466053714	103765	208.0253929388422
+50	18846	71.89188489180144	1.090326876737038	138619	528.7902574454326	100	6	246.04731454739797	491.5993647740483	16.096319999999995	32.160239999999995	262.143634547398	523.7596047740483	114403	218.4266625857843
+51	21673	78.77288755913455	1.057617070434927	159412	579.4003392043905	100	6.1	258.45838502548895	516.4487367581752	16.67435	33.318504999999995	275.13273502548896	549.7672417581751	126088	229.34799571507352
+52	24924	86.341258483254	1.025888558321879	183324	635.0676003123116	100	6.2	271.4056977645326	542.3747009228471	17.262784	34.497792	288.6684817645326	576.8724929228471	138920	240.8153955008272
+53	28663	94.66850001906165	0.9951119015722225	210823	696.3087317977405	100	6.3	284.9106714049516	569.4203828782919	17.861634	35.698131	302.77230540495157	605.1185138782919	153008	252.85616527586856
+54	32962	103.82829356146195	0.965258544525056	242446	763.690142006013	100	6.4	298.9955402487591	597.630555328408	18.470912000000002	36.91955200000001	317.4664522487591	634.5501073284081	168472	265.49897353966196
+55	37906	113.90913462732586	0.9363007881893045	278813	837.8448676422889	100	6.5	313.6833843406082	627.0516989902354	19.090629999999997	38.162085	332.7740143406082	665.2137839902355	185444	278.7739222166451
+56	43592	125.00610784364989	0.908211764543625	320635	919.4653465876464	100	6.6	328.99816063288563	657.732065715062	19.7208	39.42576	348.7189606328856	697.157825715062	204067	292.71261832747734
+57	50131	137.22258139822753	0.8809654116073165	368730	1009.3172376168126	100	6.7	344.96473527324133	689.721743889353	20.361434	40.710607	365.3261692732413	730.432350889353	224497	307.3482492438512
+58	57651	150.73421014719108	0.854536449259097	424040	1108.6942892719103	100	6.8	361.46380914214905	722.7099564160873	21.004111999999996	41.99557599999999	382.46792114214907	764.7055324160873	246782	322.71566170604376
+59	66299	165.61905049155936	0.828900355781324	487646	1218.1702212100781	100	6.9	378.65347482466575	757.0789367178834	21.656754000000006	43.300467000000005	400.3102288246657	800.3794037178834	271210	338.85144479134595
+60	76243	182.01631732463792	0.8040333451078845	560793	1338.7914515619227	100	7	396.5606674648764	792.8825388634352	22.319359999999996	44.62528	418.88002746487643	837.5078188634352	297980	355.79401703091327
+61	87680	200.08888176067165	0.779912344754648	644912	1471.712145461203	100	7.1	415.2133277257888	830.1766273537901	22.991929999999996	45.970015	438.2052577257888	876.1466423537901	327314	373.5837178824589
+62	100832	220.0059380812832	0.7565149744120085	741648	1618.2061643734878	100	7.2	434.64043822207867	869.0191499659023	23.674463999999997	47.334672	458.3149022220787	916.3538219659023	359452	392.2629037765819
+63	115957	241.96068011101104	0.733819525179648	852896	1779.688127702173	100	7.3	454.8720612445998	909.4702131789359	24.366961999999997	48.71925099999999	479.2390232445998	958.1894641789359	394655	411.876048965411
+64	133350	266.16298858448954	0.7118049394242585	980830	1957.7101169353195	100	7.4	475.9393778217078	951.5921602733904	25.069424000000005	50.123752	501.00880182170783	1001.7159122733904	433212	432.4698514136815
+65	153353	292.85032671158547	0.690450791241531	1127954	2153.9956663100147	100	7.5	497.87472816400583	995.449652196239	25.78185	51.54817499999999	523.6565781640059	1046.9978271962389	475435	454.09334398436556
+66	176356	322.2786510437433	0.669737267504285	1297148	2370.450155617555	100	7.6	520.7116535407204	1041.1097512884617	26.50424	52.992520000000006	547.2158935407203	1094.1022712884617	521666	476.79801118358387
+67	202809	354.73388366121173	0.6496451494791565	1491720	2609.1723194488545	100	7.7	544.484939637572	1088.64200797468	27.236594	54.45678699999999	571.721533637572	1143.09879497468	572279	500.63791174276304
+68	233230	390.53292239363753	0.6301557949947815	1715478	2872.489116502991	100	7.8	569.2306614477307	1138.118550518034	27.978912	55.940976	597.2095734477307	1194.059526518034	627681	525.6698073299012
+69	268215	430.0264667735971	0.6112511211449385	1972799	3162.969198681974	100	7.9	594.9862297492025	1189.6141779469704	28.731194000000002	57.445087	623.7174237492025	1247.0592649469704	688318	551.9532976963962
+70	308447	473.5983951692188	0.59291358751059	2268719	3483.456404146952	100	8	621.7904392238528	1243.206456264311	29.49344	58.969120000000004	651.2838792238528	1302.175576264311	754677	579.550962581216
+71	354714	521.6772319904804	0.5751261798852725	2609027	3837.091244068255	100	8.1	649.6835182751315	1298.975818052707	30.265649999999997	60.513075	679.9491682751316	1359.488893052707	827288	608.5285107102769
+72	407922	574.736348957258	0.557872394488714	3000381	4227.347437551117	100	8.2	678.7071806035741	1357.005665594581	31.047823999999995	62.07695199999999	709.7550046035741	1419.0826175945808	906730	638.9549362457907
+73	469110	633.2951658203134	0.541136222654053	3450439	4658.068126149254	100	8.3	708.9046786011282	1417.3824776286306	31.839962000000003	63.66075100000001	740.7446406011283	1481.0432286286307	993636	670.9026830580802
+74	539476	697.9325711590169	0.524902135974431	3968004	5133.498495001194	100	8.4	740.3208586275009	1480.1959198692364	32.642064	65.26447200000001	772.9629226275009	1545.4603918692364	1088696	704.4478172109842
+75	620398	769.2890028811671	0.5091550718951985	4563205	5658.340975297077	100	8.5	773.0022182338425	1545.5389594193707	33.45413	66.888115	806.4563482338425	1612.4270744193707	1192664	739.6702080715335
+76	713457	848.0682176309937	0.4938804197383425	5247686	6237.791083004468	100	8.6	806.9969654013755	1613.5079832121842	34.27616	68.53168	841.2731254013755	1682.0396632121842	1306362	776.6537184751102
+77	820476	935.0545622135816	0.479064007146192	6034839	6877.597564309558	100	8.7	842.3550798648383	1684.202920620966	35.10815399999999	70.195167	877.4632338648383	1754.3980876209662	1430688	815.4864043988657
+78	943547	1031.1104585691999	0.4646920869318065	6940064	7584.118834079909	100	8.8	879.1283765930596	1757.7273703820688	35.950112	71.87857600000001	915.0784885930595	1829.6059463820689	1566620	856.2607246188089
+79	1085079	1137.1936206759713	0.450751324323852	7981074	8364.392305945334	100	8.9	917.3705715014331	1834.188731980284	36.802034	73.581907	954.1726055014332	1907.770638980284	1715227	899.0737608497494
+80	1247841	1254.3620904909812	0.4372287845941365	9178235	9226.19952511377	100	9	957.1373494736105	1913.6983416512714	37.66392	75.30516	994.8012694736104	1989.0035016512716	1877674	944.0274488922369
+81	1435018	1383.787148815122	0.4241119210563125	10554970	10178.152359154483	100	9.1	998.486434772421	1996.3716131609967	38.53577	77.048335	1037.022204772421	2073.4199481609967	2055234	991.2288213368487
+82	1650270	1526.7621938125021	0.411388563424623	12138216	11229.780150599607	100	9.2	1041.4776639227198	2082.3281835275416	39.417584000000005	78.81143200000001	1080.8952479227198	2161.1396155275415	2249293	1040.790262403691
+83	1897811	1684.723135484194	0.3990469065218845	13958948	12391.62521590444	100	9.3	1086.173061151721	2171.6920638563415	40.309362	80.59445099999999	1126.482423151721	2252.2865148563415	2461366	1092.8297755238757
+84	2182482	1859.254317365784	0.387075499326228	16052791	13675.357218304938	100	9.4	1132.6369164753105	2264.5917954657903	41.211104000000006	82.39739200000002	1173.8480204753105	2346.98918746579	2693103	1147.4712643000694
+85	2509855	2052.1133189926886	0.375463234346441	18460709	15093.886625700767	100	9.5	1180.9358665218213	2361.1606114861224	42.12281	84.220255	1223.0586765218213	2445.3808664861226	2946304	1204.844827515073
+86	2886333	2265.24130528643	0.364199337316048	21229816	16661.506522923977	100	9.6	1231.1389781879284	2461.5366041208263	43.04448	86.06304	1274.1834581879284	2547.5996441208263	3222935	1265.0870688908267
+87	3319283	2500.789672053644	0.3532733571965665	24414288	18394.03247054958	100	9.7	1283.3178352245304	2565.862897766268	43.976113999999995	87.92574699999999	1327.2939492245305	2653.7886447662677	3525137	1328.341422335368
+88	3817175	2761.138128455176	0.3426751564806695	28076431	20308.97303504316	100	9.8	1337.5466278538213	2674.2878281918734	44.917712	89.80837600000001	1382.4643398538212	2764.0962041918733	3855247	1394.7584934521362
+89	4389752	3048.9226522946024	0.3323949017862495	32287896	22425.708219811117	100	9.9	1393.9022455222473	2786.965127990186	45.869274000000004	91.71092700000001	1439.7715195222472	2878.676054990186	4215811	1464.496418124743
+90	5048214	3367.0581292165834	0.322423054732662	37131080	24765.69035318061	100	10	1452.4643728975861	2904.054118513219	46.83079999999999	93.63339999999998	1499.295172897586	2997.687518513219	4609608	1537.7212390309803
+91	5805447	3718.775550051895	0.312750363090682	42700742	27352.669883761588	100	10.1	1513.3155892220964	3025.7199085189286	47.80228999999999	95.575795	1561.1178792220965	3121.295703518929	5039667	1614.6073009825293
+92	6676263	4107.647465147564	0.3033678521979615	49105853	30212.939873602772	100	10.2	1576.5414711375072	3152.133599759275	48.783743999999984	97.53811199999998	1625.3252151375073	3249.6717117592752	5509291	1695.3376660316558
+93	7677703	4537.6338087868535	0.2942668166320225	56471731	33375.61192798375	100	10.3	1642.2306991015707	3283.4724997492467	49.77516200000001	99.52035100000003	1692.0058611015706	3382.992850749247	6022081	1780.1045493332385
+94	8829358	5013.115355544622	0.285438812133062	64942491	36872.91860398212	100	10.4	1710.4751675199684	3419.9203419643527	50.776544	101.522512	1761.2517115199685	3521.4428539643527	6581963	1869.1097767999006
+95	10153762	5538.94539503433	0.27687564776907	74683865	40740.55016506351	100	10.5	1781.3700987216178	3561.667513722608	51.787890000000004	103.54459500000002	1833.1579887216178	3665.212108722608	7193218	1962.5652656398956
+96	11676827	6120.4969177188295	0.268569378335998	85886445	45018.02774814834	100	10.6	1855.0141609097334	3708.911292015627	52.809200000000004	105.5866	1907.8233609097333	3814.4978920156273	7860511	2060.6935289218904
+97	13428351	6763.719528343145	0.260512296985918	98769411	49749.11617842356	100	10.7	1931.509590225599	3861.8560875626636	53.84047399999999	107.648527	1985.350064225599	3969.5046145626634	8588929	2163.7282053679846
+98	15442603	7475.202765901761	0.2526969280763405	113584823	54982.28394876576	100	10.8	2010.9623170665618	4020.7136973705387	54.88171200000001	109.73037600000002	2065.8440290665617	4130.444073370539	9384016	2271.914615636384
+99	17758994	8262.245267074544	0.2451160202340505	130622546	60771.20767436077	100	10.9	2093.4820968046865	4185.703566092228	55.932914000000004	111.832147	2149.4150108046865	4297.535713092228	10251816	2385.5103464182034
+100	20422843	9132.92888310316	0.237762539627029	150215928	67175.33829806873	100	11	2179.182645057426	4357.053056486755	56.994080000000004	113.95384	2236.1767250574258	4471.006896486755	11198915	2504.785863739113
+101	23486269	10096.206088398276	0.230629663438218	172748318	74260.52302952681	100	11.1	2268.18177766683	4534.997729293315	58.06521000000001	116.095455	2326.24698766683	4651.093184293315	12232492	2630.025156926069
+102	27009209	11161.993136355974	0.2237107735350715	198660565	82099.69655144658	100	11.2	2360.6015555491795	4719.781632843312	59.14630399999999	118.256992	2419.7478595491793	4838.0386248433115	13360371	2761.5264147723724
+103	31060591	12341.274421005222	0.2169994503290195	228459650	90773.65059720872	100	11.3	2456.5684345823965	4911.657602744933	60.237362000000005	120.438451	2516.8057965823964	5032.096053744933	14591079	2899.6027355109914
+104	35719679	13646.216642514615	0.2104894668191485	262728597	100371.88052126436	100	11.4	2556.213420704301	5110.887571986258	61.338384000000005	122.63983200000001	2617.551804704301	5233.527403986258	15933908	3044.582872286541
+105	41077631	15090.299784533707	0.204174782814574	302137887	110993.53054453334	100	11.5	2659.6722304006184	5317.742891814645	62.44937	124.86113499999999	2722.1216004006183	5442.604026814645	17398982	3196.8120159008677
+106	47239276	16688.456571692066	0.198049539330137	347458570	122748.43619337493	100	11.6	2767.085456767878	5532.504663762512	63.570319999999995	127.10235999999999	2830.655776767878	5659.607023762512	18997335	3356.652616695911
+107	54325167	18457.23081408996	0.192108053150233	399577356	135758.28469658995	100	11.7	2878.598741342402	5755.46408320186	64.701234	129.363507	2943.299975342402	5884.82759020186	20740988	3524.4852475307066
+108	62473942	20414.952820357386	0.186344811555726	459513959	150157.89772447268	100	11.8	2994.3629518932767	5986.922794823149	65.842112	131.64457600000003	3060.2050638932765	6118.567370823149	22643040	3700.709509907242
+109	71845034	22581.932124138446	0.180754467209054	528441053	166096.65729233625	100	11.9	3114.5343663838426	6227.1932604475005	66.992954	133.94556699999998	3181.5273203838424	6361.1388274475	24717763	3885.744985402604
+110	82621789	24980.671817865117	0.1753318331927825	607707211	183740.083373662	100	12	3239.274863313181	6476.599139595062	68.15376	136.26648	3307.428623313181	6612.8656195950625	26980705	4080.0322346727344
+111	95015057	27636.107832887927	0.170071878196999	698863292	203271.58566203926	100	12.1	3368.7521186563204	6735.475683246809	69.32453	138.607315	3438.0766486563202	6874.082998246809	29448804	4284.033846406371
+112	109267316	30575.872463192092	0.164969721851089	803692786	224894.40597519148	100	12.2	3503.139809629163	7004.170141251726	70.50526399999998	140.96807199999998	3573.645073629163	7145.138213251726	32140515	4498.23553872669
+113	125657413	33830.58626400277	0.1600206301955565	924246704	248833.77034741463	100	12.3	3642.617825512013	7283.04218384688	71.69596200000001	143.34875100000002	3714.313787512013	7426.390934846881	35075938	4723.1473156630245
+114	144506025	37434.184221546195	0.1552200112896895	1062883710	275339.27811121015	100	12.4	3787.3724857733573	7572.4643377736675	72.896624	145.74935200000002	3860.2691097733573	7718.213689773667	38276973	4959.304681446175
+115	166181929	41424.27465930357	0.150563410950999	1222316266	304687.549530842	100	12.5	3937.596765743745	7872.822437489652	74.10725000000001	148.169875	4011.704015743745	8020.992312489651	41767472	5207.269915518484
+116	191109218	45842.53882845288	0.146046508622469	1405663706	337185.16404610046	100	12.6	4093.490530098323	8184.516091993054	75.32783999999998	150.61031999999997	4168.818370098323	8335.126411993055	45573416	5467.633411294409
+117	219775601	50735.1744048954	0.141665113363795	1616513262	373171.91672881093	100	12.7	4255.260774414922	8507.959167793462	76.55839399999999	153.070687	4331.8191684149215	8661.029854793462	49723103	5741.015081859129
+118	252741941	56153.38570838025	0.137415159962881	1858990251	413024.43187504687	100	12.8	4423.121875084102	8843.580288581441	77.79891200000002	155.55097600000002	4500.920787084102	8999.131264581441	54247356	6028.065835952085
+119	290653233	62153.929611195206	0.1332927051639945	2137838789	457160.17069587804	100	12.9	4597.295847856556	9191.823352167636	79.049394	158.05118700000003	4676.345241856556	9349.874539167635	59179742	6329.4691277496895
+120	334251217	68799.71843650789	0.129293924009075	2458514607	506041.87548445584	100	13	4778.012615323203	9553.148065281901	80.30984000000001	160.57132	4858.322455323203	9713.7193852819	64556821	6645.942584137174
+121	384388900	76160.49235465041	0.1254151062888025	2827291799	560182.5012171406	100	13.1	4965.510283633203	9928.0304968427	81.58024999999999	163.111375	5047.0905336332025	10091.141871842701	70418407	6978.239713344033
+122	442047235	84313.56077846597	0.1216526531001385	3251385568	620150.6829961172	100	13.2	5160.0354287652235	10316.963650327254	82.860624	165.671352	5242.896052765223	10482.635002327253	76807857	7327.151699011234
+123	508354320	93344.62852743777	0.1180030735071345	3739093404	686576.804984706	100	13.3	5361.843392678631	10720.458055895593	84.15096199999999	168.25125099999997	5445.994354678631	10888.709306895593	83772386	7693.5092839617955
+124	584607468	103348.71047737224	0.1144629813019205	4299957414	760159.7279706941	100	13.4	5571.198589681506	11139.042382942087	85.45126400000001	170.85107200000002	5656.649853681506	11309.893454942086	91363409	8078.184748159886
+125	672298589	114431.14654096743	0.1110290918628625	4944951026	841674.2571716349	100	13.5	5788.374823364342	11573.264073772021	86.76153000000001	173.47081500000002	5875.136353364342	11746.734888772022	99636909	8482.09398556788
+126	773143377	126708.72729399319	0.107698219106977	5686693680	931979.4234020768	100	13.6	6013.655614459857	12023.689999123771	88.08176000000002	176.11048000000002	6101.737374459857	12199.80047912377	108653847	8906.198684846275
+127	889114883	140310.9440848858	0.1044672725337675	6539697732	1032027.6719591324	100	13.7	6247.334540001923	12490.907136282447	89.41195399999998	178.77006699999998	6336.746494001924	12669.677203282446	118480596	9351.508619088589
+128	1022482116	155381.37457849534	0.1013332543577545	7520652392	1142875.0567956232	100	13.8	6489.715584168204	12975.523270553891	90.752112	181.449576	6580.467696168204	13156.972846553892	129189422	9819.084050043017
+129	1175854433	172079.2198820595	0.098293256727022	8648750251	1265692.550352316	100	13.9	6741.113501205639	13478.167720897105	92.10223400000001	184.149007	6833.215735205639	13662.316727897105	140859008	10310.038252545168
+130	1352232598	190581.01156335953	0.095344459025211	9946062788	1401778.591947336	100	14	7001.854190850002	13999.492090537307	93.46232	186.86836	7095.316510850002	14186.360450537308	153575015	10825.540165172426
+131	1555067488	211082.50383847544	0.092484125254455	11437972207	1552573.0110875117	100	14.1	7272.275086665232	14540.171043410755	94.83237	189.60763499999996	7367.107456665232	14729.778678410756	167430701	11366.817173431047
+132	1788327611	233800.77399247824	0.089709601496821	13153668038	1719672.474555627	100	14.2	7552.725557743227	15100.903107322416	96.212384	192.366832	7648.937941743227	15293.269939322416	182527594	11935.1580321026
+133	2056576753	258976.55311021127	0.0870183134519165	15126718243	1904847.6283352654	100	14.3	7843.567324217863	15682.411504723834	97.60236200000001	195.14595100000003	7941.169686217862	15877.557455723834	198976215	12531.91593370773
+134	2365063266	286876.8114983324	0.084407764048359	17395725980	2110062.117400078	100	14.4	8145.17488706498	16285.44501205425	99.00230400000001	197.944992	8244.17719106498	16483.39000405425	216896881	13158.511730393117
+135	2719822756	317797.6284613461	0.0818755311269085	20005084877	2337493.6903713956	100	14.5	8457.935972673155	16910.77884861447	100.41221	200.763955	8558.348182673155	17111.54280361447	236420559	13816.437316912772
+136	3127796169	352067.37615364813	0.079419265193101	23005847609	2589557.6202079905	100	14.6	8782.251992688907	17559.21559598037	101.83208	203.60284000000004	8884.084072688907	17762.81843598037	257689811	14507.259182758411
+137	3596965595	390050.2532968397	0.077036687237308	26456724750	2868932.6927360473	100	14.7	9118.5385196549	18231.586148992865	103.26191399999998	206.46164699999997	9221.8004336549	18438.047795992865	280859815	15232.622141896332
+138	4136510434	432150.20568201336	0.074725586620189	30425233462	3178590.047895084	100	14.8	9467.225778979247	18928.750699400298	104.70171199999999	209.340376	9571.927490979248	19138.091075400298	306099475	15994.253248991148
+139	4756986999	478815.2782953386	0.072483819021583	34989018482	3521825.1858290555	100	14.9	9828.759157790319	19651.599753261613	106.15147400000002	212.23902700000002	9934.910631790319	19863.838780261613	333592631	16793.965911440704
+140	5470535049	530542.4440906446	0.0703093044509355	40237371254	3902293.4864080795	100	15	10203.599731250855	20401.055183257682	107.61120000000001	215.15760000000003	10311.210931250855	20616.21278325768	363539373	17633.664207012742
+141	6291115306	587882.963459998	0.0682000253174075	46272976942	4324049.630251542	100	15.1	10592.224806925633	21178.071317098802	109.08088999999998	218.096095	10701.305696925632	21396.167412098803	396157473	18515.347417363377
+142	7234782602	651448.332586512	0.0661540245578855	53213923483	4791591.348412239	100	15.2	10995.128487814698	21983.636063252154	110.560544	221.054512	11105.689031814698	22204.690575252152	431683938	19441.114788231545
+143	8319999992	721916.8847330096	0.064169403821149	61196012006	5309907.979319068	100	15.3	11412.822254686902	22818.772075258177	112.05016200000001	224.03285100000002	11524.872416686901	23042.804926258177	470376706	20413.170527643124
+144	9567999991	800041.1175902747	0.0622443217065145	70375413807	5884534.360994057	100	15.4	11845.835568368486	23684.5379559451	113.549744	227.03111200000004	11959.385312368486	23911.5690679451	512516484	21433.829054025282
+145	11003199990	886655.8254316472	0.060376992055319	80931725878	6521610.647555439	100	15.5	12294.716492664435	24582.029502896512	115.05929	230.04929499999997	12409.775782664434	24812.078797896513	558408748	22505.520506726545
+146	12653679988	982687.1256565329	0.0585656822936595	93071484759	7227948.701495763	100	15.6	12760.032338612487	25512.380996571457	116.57880000000002	233.0874	12876.611138612487	25745.468396571458	608385925	23630.796532062872
+147	14551731986	1089162.4781150287	0.0568087118248495	107032207473	8011105.787377753	100	15.7	13242.370330793767	26476.76653252443	118.108274	236.14542699999998	13360.478604793767	26712.91195952443	662809757	24812.336358666016
+148	16734491784	1207221.8060097664	0.055104450470104	123087038594	8879466.370763285	100	15.8	13742.338296447415	27476.401399219732	119.647712	239.223376	13861.986008447415	27715.624775219734	722073875	26052.953176599316
+149	19244665552	1338129.8406565983	0.053451316956001	141550094383	9842332.917132227	100	15.9	14260.56537816366	28512.5435029884	121.197114	242.321247	14381.76249216366	28754.8647499884	786606602	27355.600835429283
+150	22131365384	1483289.824512992	0.051847777447321	162782608541	10910026.682362191	100	16	14797.702770953456	29586.494841723677	122.75648000000001	245.43903999999998	14920.459250953456	29831.93388172368	856873999	28723.380877200747
+151	25451070192	1644258.7229415113	0.0502923441239015	187199999822	12093999.59687058	100	16.1	15354.424484521218	30699.603028967456	124.32581000000002	248.57675500000002	15478.750294521218	30948.179783967455	933383173	30159.54992106078
+152	29268730721	1822764.1098036391	0.048783573800184	215279999795	13406958.467909053	100	16.2	15931.428131595161	31853.262870096223	125.905104	251.73439199999996	16057.33323559516	32104.99726209622	1016685881	31667.527417113823
+153	33659040329	2020722.9133116223	0.0473200665861785	247571999764	14863002.85829799	100	16.3	16529.435743196133	33048.91799236786	127.494362	254.91195100000002	16656.930105196134	33303.82994336786	1107382445	33250.90378796951
+154	38707896378	2240262.2261792202	0.0459004645885935	284707799729	16477778.151591524	100	16.4	17149.194611760253	34288.06253065915	129.093584	258.10943199999997	17278.28819576025	34546.171962659144	1206126012	34913.44897736799
+155	44514080835	2483742.408430804	0.0445234506509355	327413969688	18268645.479642496	100	16.5	17791.47816305554	35572.24287077404	130.70277	261.326835	17922.18093305554	35833.56970577404	1313627183	36659.12142623639
+156	51191192960	2753782.7357343663	0.0431877471314075	376526065141	20254870.37486065	100	16.6	18457.086857867354	36903.059452271526	132.32192	264.56416	18589.408777867353	37167.62361227153	1430659048	38492.077497548205
+157	58869871904	3053289.8749101227	0.0418921147174655	433004974912	22457832.214081816	100	16.7	19146.849124462813	38282.16863283302	133.951034	267.82140699999997	19280.800158462815	38549.99003983302	1558062664	40416.68137242562
+158	67700352690	3385489.498123246	0.0406353512759415	497955721149	24901256.751197685	100	16.8	19861.622322872372	39711.28461624482	135.590112	271.09857600000004	19997.212434872374	39982.383192244815	1696753004	42437.5154410469
+159	77855405594	3753961.3830342777	0.039416290737663	572649079322	27611474.288826898	100	16.9	20602.293742065784	41192.181446149596	137.23915399999998	274.39566699999995	20739.532896065783	41466.57711314959	1847725432	44559.39121309925
+160	89533716433	4162678.3839099687	0.038233802015533	658546441220	30617706.32205039	100	17	21369.781631135276	42726.69506779175	138.89816000000002	277.71268	21508.679791135277	43004.407747791745	2012062740	46787.360773754204
+161	102963773898	4616049.701580635	0.037086787955067	757328407403	33952383.80106676	100	17.1	22165.036265635663	44316.72546005557	140.56713000000002	281.049615	22305.603395635662	44597.77507505557	2190942802	49126.728812441914
+162	118408339982	5118968.9271099195	0.035974184316415	870927668513	37651500.507110074	100	17.2	22989.04105026879	45964.23884017009	142.246064	284.406472	23131.287114268787	46248.64531217009	2385646889	51583.065253064015
+163	136169590980	5676867.387520168	0.0348949587869225	1001566818790	41755005.424422346	100	17.3	23842.813659141055	47671.26994353754	143.93496199999998	287.783251	23986.748621141054	47959.05319453754	2597568719	54162.21851571721
+164	156595029626	6295773.378949788	0.033848110023315	1151801841609	46307238.419675194	100	17.4	24727.407214863117	49439.92438122271	145.63382399999998	291.17995199999996	24873.041038863117	49731.104333222705	2828224287	56870.329441503076
+165	180084284070	6982377.939752255	0.0328326667226155	1324572117850	51357414.018936515	100	17.5	25643.911507804823	51272.38107772859	147.34265000000002	294.59657500000003	25791.254157804822	51566.977652728594	3079262558	59713.845913578225
+166	207096926681	7744107.885307425	0.031847686720937	1523257935528	56960158.60269035	100	17.6	26593.454256858564	53170.89479176398	149.06144	298.03312	26742.515696858565	53468.92791176398	3352477089	62699.53820925714
+167	238161465683	8589206.909333954	0.030892256119309	1751746625857	63176106.92839879	100	17.7	27577.202413115818	55137.79872281145	150.79019399999999	301.489587	27727.99260711582	55439.28830981145	3649818664	65834.51511971999
+168	273885685536	9526825.64377272	0.0299654884357295	2014508619735	70072564.54653221	100	17.8	28596.36350790352	57175.50720638839	152.52891200000002	304.965976	28748.89241990352	57480.47318238839	3973409035	69126.24087570599
+169	314968538366	10567121.668504864	0.029066523782658	2316684912695	77724243.40233804	100	17.9	29652.18704667492	59286.51850098934	154.277594	308.462287	29806.46464067492	59594.98078798934	4325555847	72582.5529194913
+170	362213819121	11721370.573023347	0.028194528069178	2664187649600	86214078.72514597	100	18	30745.965950309772	61473.41766981848	156.03624	311.97852	30902.002190309773	61785.39618981848	4708768878	76211.68056546585
+171	416545891989	13002089.292908808	0.027348692227103	3063815797040	95634136.2050706	100	18.1	31879.038045409077	63738.87956048169	157.80485000000002	315.514675	32036.842895409078	64054.39423548169	5125777684	80022.26459373915
+172	479027775787	14423173.081050012	0.0265282314602895	3523388166596	106086619.45551573	100	18.2	33052.78760525528	66085.6718859791	159.583424	319.070752	33212.37102925528	66404.7426379791	5579550780	84023.37782342611
+173	550881942155	16000047.623355053	0.025732384516481	4051896391585	117684988.86830333	100	18.3	34268.64694312408	68516.65841036911	161.371962	322.646751	34430.018905124074	68839.3051613691	6073316494	88224.54671459741
+174	633514233479	17749837.97669413	0.0249604129809865	4659680850323	130555204.20138948	100	18.4	35528.09805973616	71034.80224268005	163.17046399999998	326.24267199999997	35691.268523736166	71361.04491468004	6610585633	92635.77405032728
+175	728541368501	19691556.192856684	0.024211600591557	5358632977871	144837104.607735	100	18.5	36832.67434665093	73643.1692426716	164.97893	329.85851499999995	36997.653276650926	73973.0277576716	7195176119	97267.56275284365
+176	837822573776	21846309.699362982	0.02348525257381	6162427924552	160685941.33602244	100	18.6	38183.96234750475	76344.93154225106	166.79736000000005	333.49428000000006	38350.759707504745	76678.42582225105	7831239775	102130.94089048583
+177	963495959842	24237532.73735231	0.022780694996596	7086792113235	178274080.0236576	100	18.7	39583.60357902788	79143.37118641043	168.62575399999997	337.14996699999995	39752.22933302788	79480.52115341043	8523291428	107237.48793501013
+178	1108020353818	26891243.4126572	0.022097274146698	8149810930220	197792891.38192	100	18.8	41033.29641386976	82041.8838977432	170.464112	340.825576	41203.76052586976	82382.7094737432	9276240554	112599.36233176063
+179	1274223406891	29836329.199698374	0.021434355922297	9372282569753	219454851.15991604	100	18.9	42534.79802729232	85043.98296865894	172.312434	344.521107	42707.11046129232	85388.50407565893	10095425665	118229.33044834866
+180	1465356917925	33104864.05324365	0.020791325244628	10778124955216	243495872.59365615	100	19	44089.92640990266	88153.30328563636	174.17072	348.23655999999994	44264.097129902664	88501.53984563636	10986651690	124140.7969707661
+181	1685160455613	36732460.633594304	0.0201675854872895	12394843698498	270177897.1243502	100	19.1	45700.56244863209	91373.60548992858	176.03897	351.97193500000003	45876.60141863209	91725.57742492858	11956230598	130347.8368193044
+182	1937934523956	40758661.540145844	0.0195625579226705	14254070253273	299791772.03398955	100	19.2	47368.65207827086	94708.78027933682	177.917184	355.72723199999996	47546.56926227086	95064.50751133682	13011025558	136865.2286602696
+183	2228624702549	45227373.880586304	0.0189756811849905	16392180791264	332660446.82925326	100	19.3	49096.208505911745	98162.85285575812	179.80536200000003	359.50245100000006	49276.013867911744	98522.35530675811	14158498922	143708.4900932831
+184	2562918407931	50187351.98497351	0.018406410749441	18851007909953	369142523.74194264	100	19.4	50885.31451078504	101739.98752347045	181.70350399999998	363.29759199999995	51067.01801478504	102103.28511547045	15406764384	150893.91459794727
+185	2947356169121	55692733.60689012	0.0178542184269575	21678659096446	409636201.64475155	100	19.5	52738.12482199232	105444.4924431685	183.61161	367.112655	52921.73643199232	105811.60509816851	16764643668	158438.61032784462
+186	3389459594489	61803635.54890436	0.017318591874149	24930457960913	454583657.0492709	100	19.6	54656.86857676545	109280.82454700135	185.52968000000004	370.9476400000001	54842.39825676545	109651.77218700135	18241728126	166360.54084423685
+187	3897878533662	68586815.3091041	0.0167990341179245	28670026655050	504475910.7076677	100	19.7	56643.851861976225	113253.59462006127	187.45771399999998	374.802547	56831.30957597622	113628.39716706127	19848445688	174678.5678864487
+188	4482560313712	76116406.07885687	0.0162950630943865	32970530653308	559858233.7343713	100	19.8	58701.46034166143	117367.57255385177	189.39571199999997	378.677376	58890.85605366143	117746.24992985178	21596133627	183412.49628077113
+189	5154944360768	84474733.23717552	0.015806211201555	37916110251304	621336153.1593826	100	19.9	60832.16197347825	121627.6927775626	191.343674	382.57212699999997	61023.505647478254	122010.2649045626	23497117621	192583.1210948097
+190	5928186014884	93753221.39329281	0.0153320248655085	43603526788999	689582123.4883077	100	20	63038.50981707529	126039.05987312063	193.3016	386.4868	63231.81141707529	126425.54667312063	25564797683	202212.27714955018
+191	6817413917116	104053402.03500764	0.014872064119543	50144055807349	765342938.249405	100	20.1	65323.14493745289	130606.95438016222	195.26949000000002	390.4213950000001	65518.41442745289	130997.37577516222	27813741539	212322.89100702768
+192	7840026004684	115488032.96055274	0.014425902195957	57665664178451	849447963.7381687	100	20.2	67688.79940650547	135336.83879731048	197.247344	394.375912	67886.04675050547	135731.21470931047	30259786102	222939.03555737907
+193	9016029905386	128182341.91391437	0.013993125130078	66315513805219	942818286.3168489	100	20.3	70138.29940606907	140234.36378640184	199.23516200000003	398.350351	70337.53456806907	140632.71413740184	32920147740	234085.987335248
+194	10368434391194	142275408.2271369	0.013573331376176	76262840876002	1046476874.793136	100	20.4	72674.56843582254	145305.37458635654	201.23294399999997	402.344712	72875.80137982254	145707.71929835653	35813542101	245790.2867020104
+195	11923699549873	157921697.80797976	0.0131661314348905	87702267007402	1161559870.700131	100	20.5	75300.6306296414	150555.9176438896	203.24069	406.358995	75503.8713196414	150962.2766388896	38960314319	258079.80103711094
+196	13712254482354	175292768.51985955	0.012771147491844	100857607058513	1289329131.8598537	100	20.6	78019.61418395082	155992.24746815217	205.25840000000005	410.3932000000001	78224.87258395083	156402.64066815216	42382580505	270983.7910889665
+197	15769092654707	194579164.89776704	0.0123880130670885	115986248117290	1431186168.5682278	100	20.7	80834.7549019296	161620.83371700536	207.28607399999999	414.4473269999999	81042.0409759296	162035.28104400536	46104381485	284532.98064341483
+198	18134456552914	215992523.2537946	0.012016372675076	133384185334883	1588687627.2563972	100	20.8	83749.39985736045	167448.36852251453	209.32371199999997	418.52137600000003	83958.72356936045	167866.88989851452	50151849861	298759.62967558554
+199	20854625035851	239767910.56969753	0.0116558814948235	153391813135115	1763562493.7239835	100	20.9	86767.01118222157	173481.77406385166	211.37131399999998	422.615347	86978.38249622157	173904.38941085167	54553391528	313697.6111593648
+200	23982818791228	266166423.18041545	0.011306205049979	176400585105383	1957731207.2092826	100	21	89891.16998208764	179728.21039573968	213.42888000000002	426.72924	90104.59886208765	180154.93963573966	59339882912	329382.4917173331
+\.
+
+
+--
+-- Data for Name: levels; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.levels (level, exp_required) FROM stdin;
+1	65
+2	85
+3	107
+4	133
+5	163
+6	216
+7	281
+8	360
+9	455
+10	614
+11	809
+12	1030
+13	1281
+14	1562
+15	1878
+16	2232
+17	2630
+18	3073
+19	3568
+20	4119
+21	4731
+22	5417
+23	6176
+24	7017
+25	7952
+26	8983
+27	10129
+28	11402
+29	12808
+30	14365
+31	16075
+32	17965
+33	20049
+34	22358
+35	24901
+36	27701
+37	30794
+38	34194
+39	37947
+40	42088
+41	46632
+42	51639
+43	57156
+44	63201
+45	69854
+46	77174
+47	85227
+48	94081
+49	103765
+50	114403
+51	126088
+52	138920
+53	153008
+54	168472
+55	185444
+56	204067
+57	224497
+58	246782
+59	271210
+60	297980
+61	327314
+62	359452
+63	394655
+64	433212
+65	475435
+66	521666
+67	572279
+68	627681
+69	688318
+70	754677
+71	827288
+72	906730
+73	993636
+74	1088696
+75	1192664
+76	1306362
+77	1430688
+78	1566620
+79	1715227
+80	1877674
+81	2055234
+82	2249293
+83	2461366
+84	2693103
+85	2946304
+86	3222935
+87	3525137
+88	3855247
+89	4215811
+90	4609608
+91	5039667
+92	5509291
+93	6022081
+94	6581963
+95	7193218
+96	7860511
+97	8588929
+98	9384016
+99	10251816
+100	11198915
+101	12232492
+102	13360371
+103	14591079
+104	15933908
+105	17398982
+106	18997335
+107	20740988
+108	22643040
+109	24717763
+110	26980705
+111	29448804
+112	32140515
+113	35075938
+114	38276973
+115	41767472
+116	45573416
+117	49723103
+118	54247356
+119	59179742
+120	64556821
+121	70418407
+122	76807857
+123	83772386
+124	91363409
+125	99636909
+126	108653847
+127	118480596
+128	129189422
+129	140859008
+130	153575015
+131	167430701
+132	182527594
+133	198976215
+134	216896881
+135	236420559
+136	257689811
+137	280859815
+138	306099475
+139	333592631
+140	363539373
+141	396157473
+142	431683938
+143	470376706
+144	512516484
+145	558408748
+146	608385925
+147	662809757
+148	722073875
+149	786606602
+150	856873999
+151	933383173
+152	1016685881
+153	1107382445
+154	1206126012
+155	1313627183
+156	1430659048
+157	1558062664
+158	1696753004
+159	1847725432
+160	2012062740
+161	2190942802
+162	2385646889
+163	2597568719
+164	2828224287
+165	3079262558
+166	3352477089
+167	3649818664
+168	3973409035
+169	4325555847
+170	4708768878
+171	5125777684
+172	5579550780
+173	6073316494
+174	6610585633
+175	7195176119
+176	7831239775
+177	8523291428
+178	9276240554
+179	10095425665
+180	10986651690
+181	11956230598
+182	13011025558
+183	14158498922
+184	15406764384
+185	16764643668
+186	18241728126
+187	19848445688
+188	21596133627
+189	23497117621
+190	25564797683
+191	27813741539
+192	30259786102
+193	32920147740
+194	35813542101
+195	38960314319
+196	42382580505
+197	46104381485
+198	50151849861
+199	54553391528
+200	59339882912
+\.
+
+
+--
+-- Data for Name: net; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.net (level, price, cooldown, catch_coef) FROM stdin;
+0	512	300	10
+1	588	300	11
+2	677	300	12
+3	778	300	13
+4	895	300	14
+5	1029	300	15
+6	1184	300	16
+7	1361	300	17
+8	1565	300	18
+9	1800	300	19
+10	2070	300	20
+11	2381	300	21
+12	2738	300	22
+13	3148	300	23
+14	3620	300	24
+15	4164	300	25
+16	4788	300	26
+17	5506	300	27
+18	6332	300	28
+19	7282	300	29
+20	8374	300	30
+21	9630	300	31
+22	11075	300	32
+23	12736	300	33
+24	14647	300	34
+25	16844	300	35
+26	19370	300	36
+27	22276	300	37
+28	25617	300	38
+29	29460	300	39
+30	33879	300	40
+31	38961	300	41
+32	44805	300	42
+33	51525	300	43
+34	59254	300	44
+35	68142	300	45
+36	78364	300	46
+37	90118	300	47
+38	103636	300	48
+39	119181	300	49
+40	137058	300	50
+41	157617	300	51
+42	181260	300	52
+43	208449	300	53
+44	239716	300	54
+45	275673	300	55
+46	317024	300	56
+47	364578	300	57
+48	419265	300	58
+49	482154	300	59
+50	554478	300	60
+51	637649	300	61
+52	733297	300	62
+53	843291	300	63
+54	969785	300	64
+55	1115252	300	65
+56	1282540	300	66
+57	1474921	300	67
+58	1696159	300	68
+59	1950583	300	69
+60	2243171	300	70
+61	2579647	300	71
+62	2966594	300	72
+63	3411583	300	73
+64	3923320	300	74
+65	4511818	300	75
+66	5188591	300	76
+67	5966879	300	77
+68	6861911	300	78
+69	7891198	300	79
+70	9074877	300	80
+71	10436109	300	81
+72	12001525	300	82
+73	13801754	300	83
+74	15872017	300	84
+75	18252820	300	85
+76	20990743	300	86
+77	24139354	300	87
+78	27760257	300	88
+79	31924296	300	89
+80	36712940	300	90
+81	42219882	300	91
+82	48552864	300	92
+83	55835793	300	93
+84	64211162	300	94
+85	73842837	300	95
+86	84919262	300	96
+87	97657152	300	97
+88	112305724	300	98
+89	129151583	300	99
+90	148524320	300	100
+91	170802968	300	101
+92	196423414	300	102
+93	225886926	300	103
+94	259769965	300	104
+95	298735459	300	105
+96	343545778	300	106
+97	395077645	300	107
+98	454339292	300	108
+99	522490185	300	109
+100	600863713	300	110
+101	690993270	300	111
+102	794642261	300	112
+103	913838600	300	113
+104	1050914390	300	114
+105	1208551548	300	115
+106	1389834280	300	116
+107	1598309423	300	117
+108	1838055836	300	118
+109	2113764211	300	119
+110	2430828843	300	120
+111	2795453169	300	121
+112	3214771145	300	122
+113	3696986817	300	123
+114	4251534839	300	124
+115	4889265065	300	125
+116	5622654825	300	126
+117	6466053048	300	127
+118	7435961006	300	128
+119	8551355156	300	129
+120	9834058430	300	130
+121	11309167194	300	131
+122	13005542273	300	132
+123	14956373614	300	133
+124	17199829657	300	134
+125	19779804105	300	135
+126	22746774721	300	136
+127	26158790929	300	137
+128	30082609568	300	138
+129	34595001003	300	139
+130	39784251154	300	140
+131	45751888827	300	141
+132	52614672151	300	142
+133	60506872974	300	143
+134	69582903920	300	144
+135	80020339508	300	145
+136	92023390434	300	146
+137	105826898999	300	147
+138	121700933849	300	148
+139	139956073926	300	149
+140	160949485015	300	150
+141	185091907768	300	151
+142	212855693933	300	152
+143	244784048023	300	153
+144	281501655226	300	154
+145	323726903510	300	155
+146	372285939037	300	156
+147	428128829892	300	157
+148	492348154376	300	158
+149	566200377532	300	159
+150	651130434162	300	160
+151	748799999286	300	161
+152	861119999179	300	162
+153	990287999056	300	163
+154	1138831198915	300	164
+155	1309655878752	300	165
+156	1506104260565	300	166
+157	1732019899649	300	167
+158	1991822884597	300	168
+159	2290596317286	300	169
+160	2634185764879	300	170
+161	3029313629611	300	171
+162	3483710674053	300	172
+163	4006267275161	300	173
+164	4607207366435	300	174
+165	5298288471400	300	175
+166	6093031742110	300	176
+167	7006986503427	300	177
+168	8058034478941	300	178
+169	9266739650782	300	179
+170	10656750598399	300	180
+171	12255263188159	300	181
+172	14093552666383	300	182
+173	16207585566340	300	183
+174	18638723401291	300	184
+175	21434531911485	300	185
+176	24649711698207	300	186
+177	28347168452938	300	187
+178	32599243720879	300	188
+179	37489130279011	300	189
+180	43112499820863	300	190
+181	49579374793992	300	191
+182	57016281013091	300	192
+183	65568723165054	300	193
+184	75404031639813	300	194
+185	86714636385785	300	195
+186	99721831843652	300	196
+187	114680106620200	300	197
+188	131882122613230	300	198
+189	151664441005215	300	199
+190	174414107155997	300	200
+191	200576223229396	300	201
+192	230662656713806	300	202
+193	265262055220877	300	203
+194	305051363504008	300	204
+195	350809068029609	300	205
+196	403430428234051	300	206
+197	463944992469158	300	207
+198	533536741339532	300	208
+199	613567252540462	300	209
+200	705602340421531	300	210
+\.
+
+
+--
+-- Data for Name: player; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.player (player_id, name, rod_level, net_level, level, experience) FROM stdin;
+912161040	chernbel	18	7	18	2991
+983520782	deadinside132	31	23	34	23117
+5128641039	dunda2	14	1	22	4167
+1572193034	olga_0_0	0	0	0	18
+259940924	leonardostars	0	0	0	15
+1555747001	ShadowRainger	37	27	40	35210
+5585165466	dunda3	0	0	12	671
+470136463	kidding_peach	9	0	9	290
+866117678	whxeqh	0	0	0	48
+767951103	girl_cat_8	0	0	2	24
+1274941064	alx3_14vo	22	11	22	5185
+310811454	Step1532	1	0	2	99
+309134020	nknefedov	0	0	1	61
+914242903	ZadDuder11	0	0	2	60
+6259057766	None	0	0	0	0
+6091578104	strafegod	5	0	5	194
+1793715178	antonOpritov	0	0	0	24
+229135625	roman_romm	0	0	1	76
+1036816687	val3rkq	0	0	2	75
+464533374	dat_king_artur	0	0	2	42
+844545726	Dmitry_Durbale	0	0	7	15
+\.
+
+
+--
+-- Data for Name: promoted_channels; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.promoted_channels (id, link, taps) FROM stdin;
+1	https://t.me/sobachki_real	0
+2	https://t.me/kotiki_real	0
+\.
+
+
+--
+-- Data for Name: rod; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.rod (level, price, cooldown) FROM stdin;
+0	17	20
+1	20	19.4
+2	23	18.818
+3	26	18.25346
+4	30	17.7058562
+5	35	17.174680514
+6	40	16.65944009858
+7	46	16.1596568956226
+8	53	15.674867188753922
+9	61	15.204621173091304
+10	70	14.748482537898566
+11	81	14.306028061761609
+12	93	13.87684721990876
+13	107	13.460541803311498
+14	123	13.056725549212151
+15	142	12.665023782735789
+16	163	12.285073069253714
+17	187	11.916520877176103
+18	215	11.55902525086082
+19	248	11.212254493334994
+20	285	10.875886858534946
+21	327	10.549610252778896
+22	376	10.23312194519553
+23	433	9.926128286839663
+24	498	9.628344438234475
+25	573	9.33949410508744
+26	658	9.059309281934816
+27	757	8.787530003476771
+28	871	8.523904103372468
+29	1001	8.268186980271294
+30	1152	8.020141370863156
+31	1324	7.779537129737262
+32	1523	7.546151015845144
+33	1751	7.31976648536979
+34	2014	7.100173490808696
+35	2316	6.887168286084434
+36	2664	6.680553237501902
+37	3063	6.480136640376844
+38	3522	6.28573254116554
+39	4051	6.097160564930574
+40	4658	5.914245747982656
+41	5357	5.736818375543176
+42	6161	5.56471382427688
+43	7085	5.397772409548574
+44	8148	5.235839237262118
+45	9370	5.078764060144254
+46	10775	4.926401138339926
+47	12392	4.778609104189728
+48	14250	4.635250831064036
+49	16388	4.496193306132116
+50	18846	4.361307506948152
+51	21673	4.230468281739708
+52	24924	4.103554233287516
+53	28663	3.98044760628889
+54	32962	3.861034178100224
+55	37906	3.745203152757218
+56	43592	3.6328470581745
+57	50131	3.523861646429266
+58	57651	3.418145797036388
+59	66299	3.315601423125296
+60	76243	3.216133380431538
+61	87680	3.119649379018592
+62	100832	3.026059897648034
+63	115957	2.935278100718592
+64	133350	2.847219757697034
+65	153353	2.761803164966124
+66	176356	2.67894907001714
+67	202809	2.598580597916626
+68	233230	2.520623179979126
+69	268215	2.445004484579754
+70	308447	2.37165435004236
+71	354714	2.30050471954109
+72	407922	2.231489577954856
+73	469110	2.164544890616212
+74	539476	2.099608543897724
+75	620398	2.036620287580794
+76	713457	1.97552167895337
+77	820476	1.916256028584768
+78	943547	1.858768347727226
+79	1085079	1.803005297295408
+80	1247841	1.748915138376546
+81	1435018	1.69644768422525
+82	1650270	1.645554253698492
+83	1897811	1.596187626087538
+84	2182482	1.548301997304912
+85	2509855	1.501852937385764
+86	2886333	1.456797349264192
+87	3319283	1.413093428786266
+88	3817175	1.370700625922678
+89	4389752	1.329579607144998
+90	5048214	1.289692218930648
+91	5805447	1.251001452362728
+92	6676263	1.213471408791846
+93	7677703	1.17706726652809
+94	8829358	1.141755248532248
+95	10153762	1.10750259107628
+96	11676827	1.074277513343992
+97	13428351	1.042049187943672
+98	15442603	1.010787712305362
+99	17758994	0.980464080936202
+100	20422843	0.951050158508116
+101	23486269	0.922518653752872
+102	27009209	0.894843094140286
+103	31060591	0.867997801316078
+104	35719679	0.841957867276594
+105	41077631	0.816699131258296
+106	47239276	0.792198157320548
+107	54325167	0.768432212600932
+108	62473942	0.745379246222904
+109	71845034	0.723017868836216
+110	82621789	0.70132733277113
+111	95015057	0.680287512787996
+112	109267316	0.659878887404356
+113	125657413	0.640082520782226
+114	144506025	0.620880045158758
+115	166181929	0.602253643803996
+116	191109218	0.584186034489876
+117	219775601	0.56666045345518
+118	252741941	0.549660639851524
+119	290653233	0.533170820655978
+120	334251217	0.5171756960363
+121	384388900	0.50166042515521
+122	442047235	0.486610612400554
+123	508354320	0.472012294028538
+124	584607468	0.457851925207682
+125	672298589	0.44411636745145
+126	773143377	0.430792876427908
+127	889114883	0.41786909013507
+128	1022482116	0.405333017431018
+129	1175854433	0.393173026908088
+130	1352232598	0.381377836100844
+131	1555067488	0.36993650101782
+132	1788327611	0.358838405987284
+133	2056576753	0.348073253807666
+134	2365063266	0.337631056193436
+135	2719822756	0.327502124507634
+136	3127796169	0.317677060772404
+137	3596965595	0.308146748949232
+138	4136510434	0.298902346480756
+139	4756986999	0.289935276086332
+140	5470535049	0.281237217803742
+141	6291115306	0.27280010126963
+142	7234782602	0.264616098231542
+143	8319999992	0.256677615284596
+144	9567999991	0.248977286826058
+145	11003199990	0.241507968221276
+146	12653679988	0.234262729174638
+147	14551731986	0.227234847299398
+148	16734491784	0.220417801880416
+149	19244665552	0.213805267824004
+150	22131365384	0.207391109789284
+151	25451070192	0.201169376495606
+152	29268730721	0.195134295200736
+153	33659040329	0.189280266344714
+154	38707896378	0.183601858354374
+155	44514080835	0.178093802603742
+156	51191192960	0.17275098852563
+157	58869871904	0.167568458869862
+158	67700352690	0.162541405103766
+159	77855405594	0.157665162950652
+160	89533716433	0.152935208062132
+161	102963773898	0.148347151820268
+162	118408339982	0.14389673726566
+163	136169590980	0.13957983514769
+164	156595029626	0.13539244009326
+165	180084284070	0.131330666890462
+166	207096926681	0.127390746883748
+167	238161465683	0.123569024477236
+168	273885685536	0.119861953742918
+169	314968538366	0.116266095130632
+170	362213819121	0.112778112276712
+171	416545891989	0.109394768908412
+172	479027775787	0.106112925841158
+173	550881942155	0.102929538065924
+174	633514233479	0.099841651923946
+175	728541368501	0.096846402366228
+176	837822573776	0.09394101029524
+177	963495959842	0.091122779986384
+178	1108020353818	0.088389096586792
+179	1274223406891	0.085737423689188
+180	1465356917925	0.083165300978512
+181	1685160455613	0.080670341949158
+182	1937934523956	0.078250231690682
+183	2228624702549	0.075902724739962
+184	2562918407931	0.073625642997764
+185	2947356169121	0.07141687370783
+186	3389459594489	0.069274367496596
+187	3897878533662	0.067196136471698
+188	4482560313712	0.065180252377546
+189	5154944360768	0.06322484480622
+190	5928186014884	0.061328099462034
+191	6817413917116	0.059488256478172
+192	7840026004684	0.057703608783828
+193	9016029905386	0.055972500520312
+194	10368434391194	0.054293325504704
+195	11923699549873	0.052664525739562
+196	13712254482354	0.051084589967376
+197	15769092654707	0.049552052268354
+198	18134456552914	0.048065490700304
+199	20854625035851	0.046623525979294
+200	23982818791228	0.045224820199916
+\.
+
+
+--
+-- Data for Name: stats; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.stats (id, player_id, balance, total_earning) FROM stdin;
+25	6259057766	0	0
+15	310811454	127	0
+22	912161040	1037	9064
+24	1793715178	8	8
+18	983520782	3891	106420
+27	470136463	427	761
+31	1555747001	24075	214282
+26	1274941064	545	17624
+35	767951103	58	58
+19	1572193034	0	0
+21	259940924	0	0
+14	5585165466	291	218
+17	5128641039	10720	11801
+28	914242903	0	0
+20	866117678	10	10
+33	6091578104	108	242
+23	309134020	0	0
+34	229135625	47	47
+30	1036816687	75	75
+29	464533374	3	3
+32	844545726	344	344
+\.
+
+
+--
+-- Data for Name: storage; Type: TABLE DATA; Schema: public; Owner: admin
+--
+
+COPY public.storage (id, player_id) FROM stdin;
+14	5585165466
+15	310811454
+17	5128641039
+18	983520782
+19	1572193034
+20	866117678
+21	259940924
+22	912161040
+23	309134020
+24	1793715178
+25	6259057766
+26	1274941064
+27	470136463
+28	914242903
+29	464533374
+30	1036816687
+31	1555747001
+32	844545726
+33	6091578104
+34	229135625
+35	767951103
+\.
+
+
+--
+-- Name: jobid_seq; Type: SEQUENCE SET; Schema: cron; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cron.jobid_seq', 3, true);
+
+
+--
+-- Name: fish_caught_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.fish_caught_id_seq', 105, true);
+
+
+--
+-- Name: fish_chances_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.fish_chances_id_seq', 1812, true);
+
+
+--
+-- Name: fish_stored_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.fish_stored_id_seq', 105, true);
+
+
+--
+-- Name: last_usages_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.last_usages_id_seq', 27, true);
+
+
+--
+-- Name: leaderboard_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.leaderboard_id_seq', 35, true);
+
+
+--
+-- Name: promoted_channels_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.promoted_channels_id_seq', 2, true);
+
+
+--
+-- Name: stats_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.stats_id_seq', 35, true);
+
+
+--
+-- Name: storage_id_seq; Type: SEQUENCE SET; Schema: public; Owner: admin
+--
+
+SELECT pg_catalog.setval('public.storage_id_seq', 35, true);
+
+
+--
+-- Name: fish_caught fish_caught_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_caught
+    ADD CONSTRAINT fish_caught_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fish_chances fish_chances_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_chances
+    ADD CONSTRAINT fish_chances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fish fish_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish
+    ADD CONSTRAINT fish_pkey PRIMARY KEY (fish_name);
+
+
+--
+-- Name: fish_stored fish_stored_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_stored
+    ADD CONSTRAINT fish_stored_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: last_usages last_usages_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.last_usages
+    ADD CONSTRAINT last_usages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: leaderboard leaderboard_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.leaderboard
+    ADD CONSTRAINT leaderboard_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: level_hardness level_hardness_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.level_hardness
+    ADD CONSTRAINT level_hardness_pkey PRIMARY KEY (level);
+
+
+--
+-- Name: levels levels_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.levels
+    ADD CONSTRAINT levels_pkey PRIMARY KEY (level);
+
+
+--
+-- Name: net net_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.net
+    ADD CONSTRAINT net_pkey PRIMARY KEY (level);
+
+
+--
+-- Name: player player_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.player
+    ADD CONSTRAINT player_pkey PRIMARY KEY (player_id);
+
+
+--
+-- Name: promoted_channels promoted_channels_link_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.promoted_channels
+    ADD CONSTRAINT promoted_channels_link_key UNIQUE (link);
+
+
+--
+-- Name: promoted_channels promoted_channels_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.promoted_channels
+    ADD CONSTRAINT promoted_channels_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rod rod_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.rod
+    ADD CONSTRAINT rod_pkey PRIMARY KEY (level);
+
+
+--
+-- Name: stats stats_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.stats
+    ADD CONSTRAINT stats_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: storage storage_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.storage
+    ADD CONSTRAINT storage_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: player delete_player_trigger; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER delete_player_trigger BEFORE DELETE ON public.player FOR EACH ROW EXECUTE FUNCTION public.delete_player();
+
+
+--
+-- Name: player insert_player_trigger; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER insert_player_trigger AFTER INSERT ON public.player FOR EACH ROW EXECUTE FUNCTION public.insert_player();
+
+
+--
+-- Name: fish_caught fish_caught_fish_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_caught
+    ADD CONSTRAINT fish_caught_fish_name_fkey FOREIGN KEY (fish_name) REFERENCES public.fish(fish_name) ON DELETE CASCADE;
+
+
+--
+-- Name: fish_caught fish_caught_stats_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_caught
+    ADD CONSTRAINT fish_caught_stats_id_fkey FOREIGN KEY (stats_id) REFERENCES public.stats(id);
+
+
+--
+-- Name: fish_chances fish_chances_fish_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_chances
+    ADD CONSTRAINT fish_chances_fish_name_fkey FOREIGN KEY (fish_name) REFERENCES public.fish(fish_name) ON DELETE CASCADE;
+
+
+--
+-- Name: fish_chances fish_chances_net_level_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_chances
+    ADD CONSTRAINT fish_chances_net_level_fkey FOREIGN KEY (net_level) REFERENCES public.net(level);
+
+
+--
+-- Name: fish_chances fish_chances_rod_level_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_chances
+    ADD CONSTRAINT fish_chances_rod_level_fkey FOREIGN KEY (rod_level) REFERENCES public.rod(level);
+
+
+--
+-- Name: fish_stored fish_stored_fish_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_stored
+    ADD CONSTRAINT fish_stored_fish_name_fkey FOREIGN KEY (fish_name) REFERENCES public.fish(fish_name) ON DELETE CASCADE;
+
+
+--
+-- Name: fish_stored fish_stored_storage_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fish_stored
+    ADD CONSTRAINT fish_stored_storage_id_fkey FOREIGN KEY (storage_id) REFERENCES public.storage(id);
+
+
+--
+-- Name: last_usages last_usages_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.last_usages
+    ADD CONSTRAINT last_usages_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(player_id) ON DELETE CASCADE;
+
+
+--
+-- Name: leaderboard leaderboard_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.leaderboard
+    ADD CONSTRAINT leaderboard_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(player_id) ON DELETE CASCADE;
+
+
+--
+-- Name: player player_net_level_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.player
+    ADD CONSTRAINT player_net_level_fkey FOREIGN KEY (net_level) REFERENCES public.net(level);
+
+
+--
+-- Name: player player_rod_level_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.player
+    ADD CONSTRAINT player_rod_level_fkey FOREIGN KEY (rod_level) REFERENCES public.rod(level);
+
+
+--
+-- Name: stats stats_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.stats
+    ADD CONSTRAINT stats_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(player_id) ON DELETE CASCADE;
+
+
+--
+-- Name: storage storage_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.storage
+    ADD CONSTRAINT storage_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(player_id) ON DELETE CASCADE;
+
+
+--
+-- Name: job cron_job_policy; Type: POLICY; Schema: cron; Owner: postgres
+--
+
+CREATE POLICY cron_job_policy ON cron.job USING ((username = CURRENT_USER));
+
+
+--
+-- Name: job; Type: ROW SECURITY; Schema: cron; Owner: postgres
+--
+
+ALTER TABLE cron.job ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: admin
+--
+
+GRANT ALL ON SCHEMA public TO backup;
+GRANT USAGE ON SCHEMA public TO dev;
+
+
+--
+-- Name: PROCEDURE insert_net(count integer); Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON PROCEDURE public.insert_net(count integer) TO dev;
+
+
+--
+-- Name: PROCEDURE insert_rod(count integer); Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON PROCEDURE public.insert_rod(count integer) TO dev;
+
+
+--
+-- Name: PROCEDURE update_leaderboard(); Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON PROCEDURE public.update_leaderboard() TO dev;
+
+
+--
+-- Name: TABLE fish; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.fish TO dev;
+
+
+--
+-- Name: TABLE fish_caught; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.fish_caught TO dev;
+
+
+--
+-- Name: SEQUENCE fish_caught_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.fish_caught_id_seq TO dev;
+
+
+--
+-- Name: TABLE fish_chances; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.fish_chances TO dev;
+
+
+--
+-- Name: SEQUENCE fish_chances_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.fish_chances_id_seq TO dev;
+
+
+--
+-- Name: TABLE fish_stored; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.fish_stored TO dev;
+
+
+--
+-- Name: SEQUENCE fish_stored_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.fish_stored_id_seq TO dev;
+
+
+--
+-- Name: TABLE last_usages; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.last_usages TO dev;
+
+
+--
+-- Name: SEQUENCE last_usages_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.last_usages_id_seq TO dev;
+
+
+--
+-- Name: TABLE leaderboard; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.leaderboard TO dev;
+
+
+--
+-- Name: SEQUENCE leaderboard_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.leaderboard_id_seq TO dev;
+
+
+--
+-- Name: TABLE level_hardness; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.level_hardness TO dev;
+
+
+--
+-- Name: TABLE levels; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.levels TO dev;
+
+
+--
+-- Name: TABLE net; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.net TO dev;
+
+
+--
+-- Name: TABLE player; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.player TO dev;
+
+
+--
+-- Name: TABLE promoted_channels; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.promoted_channels TO dev;
+
+
+--
+-- Name: SEQUENCE promoted_channels_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.promoted_channels_id_seq TO dev;
+
+
+--
+-- Name: TABLE rod; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.rod TO dev;
+
+
+--
+-- Name: TABLE stats; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.stats TO dev;
+
+
+--
+-- Name: SEQUENCE stats_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.stats_id_seq TO dev;
+
+
+--
+-- Name: TABLE storage; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON TABLE public.storage TO dev;
+
+
+--
+-- Name: SEQUENCE storage_id_seq; Type: ACL; Schema: public; Owner: admin
+--
+
+GRANT ALL ON SEQUENCE public.storage_id_seq TO dev;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
