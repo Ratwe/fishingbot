@@ -48,7 +48,7 @@ class DBConnector:
     def get_rod_fish_catch_chances(self, level):
         query = f'''
         SELECT fish_name, catch_chance
-        FROM fish_chances
+        FROM fish_chances JOIN fish ON fish_chances.fish_id = fish.id
         WHERE rod_level = {level};
         '''
         return self.fetch_as_dicts(query)
@@ -56,7 +56,7 @@ class DBConnector:
     def get_net_fish_catch_chances(self, level):
         query = f'''
         SELECT fish_name, catch_chance
-        FROM fish_chances
+        FROM fish_chances JOIN fish ON fish_chances.fish_id = fish.id
         WHERE net_level = {level};
         '''
         return self.fetch_as_dicts(query)
@@ -64,7 +64,7 @@ class DBConnector:
     def get_player_rod_fish_catch_chances(self, player_id):
         query = f'''
         SELECT fish_name, catch_chance
-        FROM fish_chances
+        FROM fish_chances JOIN fish ON fish_chances.fish_id = fish.id
         WHERE rod_level = (SELECT player.rod_level FROM player WHERE player_id = {player_id});
         '''
         return self.fetch_as_dicts(query)
@@ -72,7 +72,7 @@ class DBConnector:
     def get_player_net_fish_catch_chances(self, player_id):
         query = f'''
         SELECT fish_name, catch_chance
-        FROM fish_chances
+        FROM fish_chances JOIN fish ON fish_chances.fish_id = fish.id
         WHERE net_level = (SELECT player.net_level FROM player WHERE player_id = {player_id});
         '''
         return self.fetch_as_dicts(query)
@@ -111,6 +111,7 @@ class DBConnector:
         FROM player
         JOIN storage ON player.player_id = storage.player_id
         JOIN fish_stored ON storage.id = fish_stored.storage_id
+        JOIN fish ON fish_stored.fish_id = fish.id
         WHERE player.player_id = {player_id};
         '''
         return self.fetch_as_dicts(query)
@@ -121,6 +122,7 @@ class DBConnector:
         FROM player
         JOIN storage ON player.player_id = storage.player_id
         JOIN fish_stored ON storage.id = fish_stored.storage_id
+        JOIN fish ON fish_stored.fish_id = fish.id
         WHERE player.player_id = {player_id}
         '''
         return self.fetch_as_dicts(query)
@@ -131,16 +133,18 @@ class DBConnector:
         FROM player
         JOIN stats ON player.player_id = stats.player_id
         JOIN fish_caught ON stats.id = fish_caught.stats_id
+        JOIN fish ON fish_caught.fish_id = fish.id
         WHERE player.player_id = {player_id};
         '''
         return self.fetch_as_dicts(query)
 
     def get_player_stats(self, player_id):
         query = f'''
-        SELECT level, experience, stats.id as stats_id, total_earning, balance, fish_name, caught_amount
+        SELECT level, player.experience, stats.id as stats_id, total_earning, balance, fish_name, caught_amount
         FROM player
         JOIN stats ON player.player_id = stats.player_id
         JOIN fish_caught ON stats.id = fish_caught.stats_id
+        JOIN fish ON fish_caught.fish_id = fish.id
         WHERE player.player_id = {player_id};
         '''
         return self.fetch_as_dicts(query)
@@ -247,6 +251,7 @@ class DBConnector:
                 FROM fish_caught
                          JOIN public.stats s ON s.id = fish_caught.stats_id
                          JOIN player p ON s.player_id = p.player_id
+                         JOIN fish ON fish_caught.fish_id = fish.id
                 WHERE p.player_id = {player_id}
                   AND fish_name = '{fish_name}' '''
         return self.fetch_as_dicts(query)
@@ -269,6 +274,7 @@ class DBConnector:
                 FROM fish_stored
                          JOIN public.storage s ON s.id = fish_stored.storage_id
                          JOIN player p ON s.player_id = p.player_id
+                         JOIN fish ON fish_stored.fish_id = fish.id
                 WHERE p.player_id = {player_id}
                   AND fish_name = '{fish_name}' '''
         return self.fetch_as_dicts(query)
