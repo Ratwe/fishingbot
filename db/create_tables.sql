@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS fish
 (
-    fish_name  VARCHAR(30) PRIMARY KEY,
+    id INT PRIMARY KEY,
+    fish_name  VARCHAR(30),
     cost       INT,
     experience INT
 );
@@ -40,7 +41,7 @@ DROP TABLE fish_chances;
 CREATE TABLE IF NOT EXISTS fish_chances
 (
     id           SERIAL PRIMARY KEY,
-    fish_name    VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
+    fish_id      INT REFERENCES fish (id) ON DELETE CASCADE,
     rod_level    INT REFERENCES rod (level),
     net_level    INT REFERENCES net (level),
     catch_chance NUMERIC(4, 3)
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS fish_caught
 (
     id            SERIAL PRIMARY KEY,
     stats_id      INT REFERENCES stats (id),
-    fish_name     VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
+    fish_id     INT REFERENCES fish (id) ON DELETE CASCADE,
     caught_amount INT
 );
 
@@ -72,7 +73,7 @@ CREATE TABLE IF NOT EXISTS fish_stored
 (
     id            SERIAL PRIMARY KEY,
     storage_id    INT REFERENCES storage (id),
-    fish_name     VARCHAR(30) REFERENCES fish (fish_name) ON DELETE CASCADE,
+    fish_id       INT REFERENCES fish (id) ON DELETE CASCADE,
     stored_amount INT
 );
 
@@ -143,11 +144,6 @@ VALUES (2, 'name4', 0, 0, 2, 0),
 
 insert into player VALUES (5128641039, 'dunda2', 0, 0, 1, 0);
 delete from player where name = 'dunda2';
-
-INSERT INTO fish(fish_name, cost, experience)
-VALUES ('cod', 1, 3),
-       ('salmon', 3, 5),
-       ('puffer', 5, 10);
 
 CALL insert_fish_chances(200);
 
