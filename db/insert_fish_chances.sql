@@ -48,14 +48,14 @@ BEGIN
             END IF;
 
             IF (i < 5) THEN
-                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                INSERT INTO fish_chances (fish_id, rod_level, net_level, catch_chance)
                 VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance);
             ELSIF (i < 10) THEN
-                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                INSERT INTO fish_chances (fish_id, rod_level, net_level, catch_chance)
                 VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance),
                        (mid_fish_id, current_rod_level, current_net_level, mid_fish_chance);
             ELSE
-                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                INSERT INTO fish_chances (fish_id, rod_level, net_level, catch_chance)
                 VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance),
                        (mid_fish_id, current_rod_level, current_net_level, mid_fish_chance),
                        (old_fish_id, current_rod_level, current_net_level, old_fish_chance);
@@ -66,7 +66,7 @@ END;
 $$;
 
 --TRUNCATE fish_chances;
-TRUNCATE fish_chances_new;
+TRUNCATE fish_chances;
 CALL insert_fish_chances(200);
 SELECT *
 FROM fish_chances_new;

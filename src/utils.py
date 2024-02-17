@@ -8,6 +8,18 @@ def translate_fish_name(fish_name):
             fish_name = 'иглобрюх'
         case 'tropical':
             fish_name = 'тропическая рыба'
+        case 'goatfish':
+            fish_name = 'султанка'
+        case 'anemone':
+            fish_name = 'анемон'
+        case 'tang':
+            fish_name = 'тан'
+        case 'butterflyfish':
+            fish_name = 'рыба-бабочка'
+        case 'cichlid':
+            fish_name = 'цихлида'
+        case 'dottyback':
+            fish_name = 'доттибэк'
 
     return fish_name
 
