@@ -33,7 +33,7 @@ BEGIN
     FOR i IN 0..count
         LOOP
             current_price := 600 * (1.15) ^ (i - 9) * 3;
-            current_cooldown := 10;
+            current_cooldown := 300;
             current_catch_coef := 10 + i;
 
             UPDATE net
