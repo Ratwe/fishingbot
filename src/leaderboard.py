@@ -19,12 +19,13 @@ def leaderboard_message(player_id, leaderboard, db_connector):
 
     stats = db_connector.get_player_stats(player_id)
     player_name = db_connector.get_player_name(player_id)[0]["name"]
+    escaped_player_name = player_name.replace('_', r'\_')
     rank = db_connector.get_player_rank(player_id)[0]["rank"]
     level = stats[0]["level"]
     total_earning = stats[0]["total_earning"]
 
     message += "\nВаша позиция:\n" \
-               f"{rank}. @{player_name} ({level}): {total_earning}$\n"
+               f"{rank}. @{escaped_player_name} ({level}): {total_earning}$\n"
 
     message += "\n_Таблица лидеров обновляется раз в 10 минут_"
 
