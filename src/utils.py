@@ -6,6 +6,8 @@ def translate_fish_name(fish_name):
             fish_name = 'лосось'
         case 'puffer':
             fish_name = 'иглобрюх'
+        case 'tropical':
+            fish_name = 'тропическая рыба'
 
     return fish_name
 
