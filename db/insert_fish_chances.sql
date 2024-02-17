@@ -47,6 +47,10 @@ BEGIN
                 END IF;
             END IF;
 
+            IF i = 0 THEN
+                new_fish_chance = 1;
+            END IF;
+
             IF (i < 5) THEN
                 INSERT INTO fish_chances (fish_id, rod_level, net_level, catch_chance)
                 VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance);
@@ -69,4 +73,4 @@ $$;
 TRUNCATE fish_chances;
 CALL insert_fish_chances(200);
 SELECT *
-FROM fish_chances_new;
+FROM fish_chances;
