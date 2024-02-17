@@ -4,6 +4,7 @@ $$
 DECLARE
     stats_id   INT;
     storage_id INT;
+    fish_types INT;
 BEGIN
     INSERT INTO leaderboard(player_id, rank)
     VALUES (NEW.player_id, NULL);
@@ -15,19 +16,19 @@ BEGIN
     VALUES (NEW.player_id, 0, 0)
     RETURNING id INTO stats_id;
 
-    INSERT INTO fish_caught(stats_id, fish_name, caught_amount)
-    VALUES (stats_id, 'cod', 0),
-           (stats_id, 'salmon', 0),
-           (stats_id, 'puffer', 0);
-
     INSERT INTO storage(player_id)
     VALUES (NEW.player_id)
     RETURNING id INTO storage_id;
 
-    INSERT INTO fish_stored(storage_id, fish_name, stored_amount)
-    VALUES (storage_id, 'cod', 0),
-           (storage_id, 'salmon', 0),
-           (storage_id, 'puffer', 0);
+    SELECT COUNT(*) INTO fish_types FROM fish;
+
+    FOR i IN 1..fish_types
+        LOOP
+            INSERT INTO fish_caught(stats_id, fish_id, caught_amount)
+            VALUES (stats_id, i, 0);
+            INSERT INTO fish_stored(storage_id, fish_id, stored_amount)
+            VALUES (storage_id, i, 0);
+        END LOOP;
 
     RETURN NEW;
 END;
@@ -47,7 +48,6 @@ BEGIN
     DELETE
     FROM leaderboard
     WHERE player_id = OLD.player_id;
-
 
     DELETE
     FROM last_usages
