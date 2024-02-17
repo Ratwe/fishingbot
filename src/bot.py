@@ -19,6 +19,7 @@ from db_requests import DBConnector
 class FishingBot:
     def __init__(self):
         self.token = None
+        self.admin_ids = self.get_admin_ids()
         self.messages = self.read_texts()
         self.application = self.get_application()
         self.application = self.setup_application(self.application)
@@ -38,19 +39,18 @@ class FishingBot:
             texts = yaml.safe_load(file)
         return texts
 
-    async def send_message(self, user_id, message):
-        await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown")
-
     async def send_cooldown_message(self, user_id, cooldown, tool):
         tool_name = None
         reply_markup = None
         if tool == "rod":
             tool_name = "удочки"
-            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Ловить рыбу')], [KeyboardButton('Меню')]], resize_keyboard=True,
+            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Ловить рыбу')], [KeyboardButton('Меню')]],
+                                               resize_keyboard=True,
                                                one_time_keyboard=True)
         elif tool == "net":
             tool_name = "сети"
-            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Забросить сеть')], [KeyboardButton('Меню')]], resize_keyboard=True,
+            reply_markup = ReplyKeyboardMarkup([[KeyboardButton('Забросить сеть')], [KeyboardButton('Меню')]],
+                                               resize_keyboard=True,
                                                one_time_keyboard=True)
         await self.application.bot.send_message(chat_id=user_id,
                                                 text=f"Перезарядка {tool_name}: {cooldown:.0f} секунд(ы)!",
@@ -64,6 +64,24 @@ class FishingBot:
         config = configparser.ConfigParser()
         config.read("settings/config.ini")
         return config
+
+    def get_admin_ids(self):
+        config = self.read_config()
+        return config["Admin"]["admin_ids"]
+
+    async def send_message(self, user_id, message, entities=None):
+        await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown",
+                                                entities=entities)
+
+    async def send_message_everyone(self, update: Update, context):
+        user = update.effective_user
+        message = update.message.text.replace("/send", "")
+        if str(user.id) not in self.admin_ids:
+            await self.send_message(user.id, "Нет прав!")
+            return
+        users = self.db_connector.get_all_players()
+        for user in users:
+            await self.send_message(user["player_id"], message, update.message.entities)
 
     async def start(self, update: Update, context):
         user = update.effective_user
@@ -161,6 +179,7 @@ class FishingBot:
         return Application.builder().token(self.token).build()
 
     def setup_application(self, application):
+        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)/send'), self.send_message_everyone))
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Старт'), self.start))
         application.add_handler(CommandHandler("menu", self.menu))
@@ -197,9 +216,7 @@ class FishingBot:
             MessageHandler(filters.TEXT & filters.Regex(r'(?i)подтвердить улучшение сети'), self.up_net_approve))
         application.add_handler(CommandHandler("net", self.net))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Забросить сеть'), self.net))
-        application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo)
-        )
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.echo))
         return application
 
     def setup_logging(self):

@@ -327,6 +327,10 @@ class DBConnector:
         self.update_player_net_level(player_id, level)
         self.update_balance(player_id, delta)
 
+    def get_all_players(self):
+        query = f'''SELECT * FROM player'''
+        return self.fetch_as_dicts(query)
+
     @staticmethod
     def open_connection():
         conn = None
