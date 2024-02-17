@@ -3,43 +3,70 @@ CREATE OR REPLACE PROCEDURE insert_fish_chances(count INT)
 AS
 $$
 DECLARE
-    i INT;
+    i                 INT;
     current_rod_level INT;
     current_net_level INT;
-    cod_chance NUMERIC(4, 3);
-    salmon_chance NUMERIC(4, 3);
-    puffer_chance NUMERIC(4, 3);
+    old_fish_id       INT = -2;
+    mid_fish_id       INT = -1;
+    new_fish_id       INT = 0;
+    old_fish_chance   NUMERIC(4, 3);
+    mid_fish_chance   NUMERIC(4, 3);
+    new_fish_chance   NUMERIC(4, 3);
+    fish_types        INT;
 BEGIN
-    FOR i IN 0..count LOOP
-        current_rod_level := i;
-        current_net_level := i;
+    SELECT COUNT(*) INTO fish_types FROM fish;
 
-        IF i <= 5 THEN
-            cod_chance := 1.0;
-            salmon_chance := 0.0;
-            puffer_chance := 0.0;
-        ELSIF i <= 9 THEN
-            cod_chance := GREATEST(0.0, 1.0 - 0.15 * (i - 5));
-            salmon_chance := LEAST(1.0, 0.15 * (i - 5));
-            puffer_chance := 0.0;
-        ELSIF i = 10 THEN
-            cod_chance := 0.20;
-            salmon_chance := 0.75;
-            puffer_chance := 0.05;
-        ELSE
-            cod_chance := GREATEST(0.0000, cod_chance * 0.8);
-            salmon_chance := GREATEST(0.0000, salmon_chance * 0.9);
-            puffer_chance := 1.0 - cod_chance - salmon_chance;
-        END IF;
+    FOR i IN 0..count
+        LOOP
+            current_rod_level := i;
+            current_net_level := i;
 
-        INSERT INTO fish_chances (fish_name, rod_level, net_level, catch_chance)
-        VALUES ('cod', current_rod_level, current_net_level, cod_chance),
-               ('salmon', current_rod_level, current_net_level, salmon_chance),
-               ('puffer', current_rod_level, current_net_level, puffer_chance);
-    END LOOP;
+            IF i % 5 = 0 AND (i / 5 + 1) <= fish_types THEN
+                old_fish_id := old_fish_id + 1;
+                mid_fish_id := mid_fish_id + 1;
+                new_fish_id := new_fish_id + 1;
+
+                IF i >= 10 THEN
+                    old_fish_chance = 0.2;
+                    mid_fish_chance = 0.75;
+                    new_fish_chance = 0.05;
+                END IF;
+            ELSE
+                IF i < 5 THEN
+                    old_fish_chance := 0.0;
+                    mid_fish_chance := 0.0;
+                    new_fish_chance := 1.0;
+                ELSIF i < 10 THEN
+                    old_fish_chance := 0;
+                    mid_fish_chance := 1.0 - 0.15 * (i - 4);
+                    new_fish_chance := 0.15 * (i - 4);
+                ELSE
+                    old_fish_chance := GREATEST(0.0000, old_fish_chance * 0.8);
+                    mid_fish_chance := GREATEST(0.0000, mid_fish_chance * 0.9);
+                    new_fish_chance := 1.0 - old_fish_chance - mid_fish_chance;
+                END IF;
+            END IF;
+
+            IF (i < 5) THEN
+                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance);
+            ELSIF (i < 10) THEN
+                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance),
+                       (mid_fish_id, current_rod_level, current_net_level, mid_fish_chance);
+            ELSE
+                INSERT INTO fish_chances_new (fish_id, rod_level, net_level, catch_chance)
+                VALUES (new_fish_id, current_rod_level, current_net_level, new_fish_chance),
+                       (mid_fish_id, current_rod_level, current_net_level, mid_fish_chance),
+                       (old_fish_id, current_rod_level, current_net_level, old_fish_chance);
+
+            END IF;
+        END LOOP;
 END;
 $$;
 
-TRUNCATE fish_chances;
-call insert_fish_chances(200);
-select * from fish_chances;
+--TRUNCATE fish_chances;
+TRUNCATE fish_chances_new;
+CALL insert_fish_chances(200);
+SELECT *
+FROM fish_chances_new;
