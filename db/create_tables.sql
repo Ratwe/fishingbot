@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS fish
 (
-    id INT PRIMARY KEY,
+    id         INT PRIMARY KEY,
     fish_name  VARCHAR(30),
     cost       INT,
     experience INT
@@ -51,15 +51,15 @@ CREATE TABLE IF NOT EXISTS stats
 (
     id            SERIAL PRIMARY KEY,
     player_id     BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
-    balance       INT,
-    total_earning INT
+    balance       BIGINT,
+    total_earning BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS fish_caught
 (
     id            SERIAL PRIMARY KEY,
     stats_id      INT REFERENCES stats (id),
-    fish_id     INT REFERENCES fish (id) ON DELETE CASCADE,
+    fish_id       INT REFERENCES fish (id) ON DELETE CASCADE,
     caught_amount INT
 );
 
@@ -122,13 +122,13 @@ CREATE TABLE levels
     exp_required DECIMAL(20, 0)
 );
 
-drop table last_usages;
-create table last_usages
+DROP TABLE last_usages;
+CREATE TABLE last_usages
 (
-    id serial PRIMARY KEY,
-    player_id bigint REFERENCES player(player_id) on delete CASCADE,
-    rod_last_use timestamp,
-    net_last_use timestamp
+    id           SERIAL PRIMARY KEY,
+    player_id    BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
+    rod_last_use TIMESTAMP,
+    net_last_use TIMESTAMP
 );
 
 INSERT INTO promoted_channels
@@ -142,8 +142,11 @@ VALUES (2, 'name4', 0, 0, 2, 0),
        (4, 'name44', 0, 0, 1, 0);
 
 
-insert into player VALUES (5128641039, 'dunda2', 0, 0, 1, 0);
-delete from player where name = 'dunda2';
+INSERT INTO player
+VALUES (5128641039, 'dunda2', 0, 0, 1, 0);
+DELETE
+FROM player
+WHERE name = 'dunda2';
 
 CALL insert_fish_chances(200);
 
