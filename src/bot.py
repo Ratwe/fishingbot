@@ -69,20 +69,41 @@ class FishingBot:
         config = self.read_config()
         return config["Admin"]["admin_ids"]
 
-    async def send_message(self, user_id, message, entities=None):
-        user_id = user_id.replace('_', r'\_')  # ВОТ ЭТУ ШТУКУ НАДО ПРОТЕСТИРОВАТЬ
-        await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown",
+    def check_admin(self, user):
+        if str(user.id) not in self.admin_ids:
+            return False
+        return True
+
+    async def send_message(self, user_id, message, entities=None, parse_mode="Markdown"):
+        print(f"Sending message to {user_id}")
+        await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode=parse_mode,
                                                 entities=entities)
 
     async def send_message_everyone(self, update: Update, context):
         user = update.effective_user
-        message = update.message.text.replace("/send", "")
-        if str(user.id) not in self.admin_ids:
+        if not self.check_admin(user):
             await self.send_message(user.id, "Нет прав!")
             return
-        users = self.db_connector.get_all_players()
-        for user in users:
-            await self.send_message(user["player_id"], message, update.message.entities)
+        message = update.message.text.replace("/send", "")
+        players = self.db_connector.get_all_players()
+        for player in players:
+            await self.send_message(player["player_id"], message, update.message.entities)
+
+    async def all_users(self, update: Update, context):
+        user = update.effective_user
+        if not self.check_admin(user):
+            await self.send_message(user.id, "Нет прав!")
+            return
+        players = self.db_connector.get_all_players()
+        no_zero_lvl = 0
+        for player in players:
+            stats = self.db_connector.get_player_stats(player["player_id"])
+            total_earning = stats[0]["total_earning"]
+            if total_earning > 0:
+                no_zero_lvl += 1
+        message = f"Всего игроков {len(players)}.\nНенулевого уровня {no_zero_lvl}."
+        await self.send_message(user.id, message)
+
 
     async def start(self, update: Update, context):
         user = update.effective_user
@@ -184,6 +205,7 @@ class FishingBot:
 
     def setup_application(self, application):
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)/send'), self.send_message_everyone))
+        application.add_handler(CommandHandler("all_users", self.all_users))
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Старт'), self.start))
         application.add_handler(CommandHandler("menu", self.menu))
