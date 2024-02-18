@@ -71,6 +71,6 @@ $$;
 
 --TRUNCATE fish_chances;
 TRUNCATE fish_chances;
-CALL insert_fish_chances(200);
+CALL insert_fish_chances(1000);
 SELECT *
 FROM fish_chances;

@@ -10,7 +10,7 @@ DROP TABLE rod CASCADE;
 CREATE TABLE IF NOT EXISTS rod
 (
     level    INT PRIMARY KEY,
-    price    DECIMAL(30, 0),
+    price    DECIMAL(1000, 0),
     cooldown FLOAT
 );
 CALL insert_rod(200);
@@ -19,7 +19,7 @@ DROP TABLE net CASCADE;
 CREATE TABLE IF NOT EXISTS net
 (
     level      INT PRIMARY KEY,
-    price      DECIMAL(30, 0),
+    price      DECIMAL(1000, 0),
     cooldown   FLOAT,
     catch_coef FLOAT
 );
@@ -97,10 +97,10 @@ DROP TABLE level_hardness;
 CREATE TABLE level_hardness
 (
     level           INT PRIMARY KEY,
-    rod_price       DECIMAL(30, 0),
+    rod_price       DECIMAL(1000, 0),
     rod_time_to_buy FLOAT,
     rod_cooldown    FLOAT,
-    net_price       DECIMAL(30, 0),
+    net_price       DECIMAL(1000, 0),
     net_time_to_buy FLOAT,
     net_cooldown    FLOAT,
     net_catch_coef  FLOAT,
@@ -122,13 +122,20 @@ CREATE TABLE levels
     exp_required DECIMAL(20, 0)
 );
 
-DROP TABLE last_usages;
 CREATE TABLE last_usages
 (
     id           SERIAL PRIMARY KEY,
     player_id    BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
     rod_last_use TIMESTAMP,
     net_last_use TIMESTAMP
+);
+
+drop table utm;
+CREATE TABLE utm
+(
+    id    SERIAL PRIMARY KEY,
+    name  VARCHAR(50),
+    clicks INT
 );
 
 INSERT INTO promoted_channels

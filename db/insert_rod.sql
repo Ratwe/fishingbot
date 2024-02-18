@@ -1,13 +1,13 @@
-CREATE OR REPLACE PROCEDURE insert_rod(count INT)
+CREATE OR REPLACE PROCEDURE insert_rod(start INT, finish int)
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
     i INT;
-    current_price DECIMAL(30,0);
+    current_price DECIMAL(1000,0);
     current_cooldown FLOAT;
 BEGIN
-    FOR i IN 0..count LOOP
+    FOR i IN start..finish LOOP
         current_price := 20 * (1.15)^(i - 1);
         current_cooldown := 20 * (0.97)^(i);
 
@@ -17,6 +17,30 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE PROCEDURE update_rod(start INT, finish INT)
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    i                  INT;
+    current_price      DECIMAL (1000, 0);
+    current_cooldown   FLOAT;
+BEGIN
+    FOR i IN start..finish
+        LOOP
+            current_price := 20 * (1.15)^(i - 1);
+            current_cooldown := 20 * (0.97)^(i);
+
+            UPDATE rod
+            set cooldown = current_cooldown
+            where level = i;
+        END LOOP;
+END;
+$$;
+
+
 TRUNCATE table rod CASCADE;
-call insert_rod(200);
+call insert_rod(201, 1000);
+call update_rod(201, 1000);
+alter table rod alter column price type DECIMAL (1000, 0);
 select * from rod;
