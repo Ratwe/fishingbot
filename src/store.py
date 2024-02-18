@@ -57,7 +57,7 @@ def up_rod_approve(player_id, bot):
             db_connector.up_player_rod(player_id, cur_rod_level + 1, delta=-rod_price)
             return f"Удочка улучшена до *{cur_rod_level + 1} уровня* за *{rod_price}$*!"
         else:
-            return f"Недостаточно средств! На счету всего {balance}, а нужно {rod_price}!"
+            return f"Недостаточно средств! На счету всего {balance}$, а нужно {rod_price}$!"
     else:
         return f"Необходим {cur_rod_level + 1} уровень!"
 
@@ -122,6 +122,6 @@ def up_net_approve(player_id, bot):
             db_connector.up_player_net(player_id, cur_net_level + 1, delta=-net_price)
             return f"Сеть улучшена до *{cur_net_level + 1} уровня* за *{net_price}$*!"
         else:
-            return f"Недостаточно средств! На счету всего {balance}, а нужно {net_price}!"
+            return f"Недостаточно средств! На счету всего {balance}$, а нужно {net_price}$!"
     else:
         return f"Необходим {cur_net_level + 1} уровень!"
