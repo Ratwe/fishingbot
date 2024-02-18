@@ -75,7 +75,6 @@ class FishingBot:
         return True
 
     async def send_message(self, user_id, message, entities=None, parse_mode="Markdown"):
-        print(f"Sending message to {user_id}")
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode=parse_mode,
                                                 entities=entities)
 
@@ -84,7 +83,7 @@ class FishingBot:
         if not self.check_admin(user):
             await self.send_message(user.id, "Нет прав!")
             return
-        message = update.message.text.replace("/send", "")
+        message = update.message.text.replace("/send_everyone", "")
         players = self.db_connector.get_all_players()
         for player in players:
             await self.send_message(player["player_id"], message, update.message.entities)
@@ -104,11 +103,43 @@ class FishingBot:
         message = f"Всего игроков {len(players)}.\nНенулевого уровня {no_zero_lvl}."
         await self.send_message(user.id, message)
 
+    async def get_utm(self, update: Update, context):
+        user = update.effective_user
+        if not self.check_admin(user):
+            await self.send_message(user.id, "Нет прав!")
+            return
+        message = "id, name, clicks\n"
+        utms = self.db_connector.get_utm()
+        for utm in utms:
+            message += f"{utm['id']}, {utm['name']}, {utm['clicks']}\n"
+        await self.send_message(user.id, message, parse_mode="html")
+
+    async def add_utm(self, update: Update, context):
+        user = update.effective_user
+        if not self.check_admin(user):
+            await self.send_message(user.id, "Нет прав!")
+            return
+        if len(context.args) != 2:
+            await self.send_message(user.id, "Неправильный формат!\nПример: /add\_utm <utm\_name> <clicks>")
+            return
+        utm_name = context.args[0]
+        clicks = context.args[1]
+        self.db_connector.add_utm(utm_name, clicks)
+        await self.send_message(user.id, f"{utm_name} with {clicks} clicks added!")
 
     async def start(self, update: Update, context):
         user = update.effective_user
-        print(f"Trying to insert player {user.id}, {user.username}")
-        self.db_connector.insert_player(user.id, user.username)
+        utm_name = context.args[0] if context.args else None
+        stats = self.db_connector.get_player_stats(user.id)
+        if not stats:  # пользователь не имеет статистики
+            print(f"New player came with utm tag: {utm_name}")
+            print(f"Inserting new player {user.id}, {user.username}")
+            self.db_connector.insert_player(user.id, user.username)
+            if not self.db_connector.get_utm(utm_name):  # если по этой метке перешли впервые
+                print(f"Adding new utm: {utm_name}, 0")
+                await self.db_connector.add_utm(utm_name, 0)
+            self.db_connector.update_utm(utm_name)
+
         keyboard = [[KeyboardButton('Ловить рыбу')], [KeyboardButton('Продать рыбу')], [KeyboardButton('Меню')]]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_text(
@@ -204,8 +235,11 @@ class FishingBot:
         return Application.builder().token(self.token).build()
 
     def setup_application(self, application):
-        application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)/send'), self.send_message_everyone))
+        application.add_handler(
+            MessageHandler(filters.TEXT & filters.Regex(r'(?i)/send_everyone'), self.send_message_everyone))
         application.add_handler(CommandHandler("all_users", self.all_users))
+        application.add_handler(CommandHandler("add_utm", self.add_utm))
+        application.add_handler(CommandHandler("get_utm", self.get_utm))
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(?i)Старт'), self.start))
         application.add_handler(CommandHandler("menu", self.menu))

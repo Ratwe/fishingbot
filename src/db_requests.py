@@ -331,6 +331,26 @@ class DBConnector:
         query = f'''SELECT * FROM player'''
         return self.fetch_as_dicts(query)
 
+    def get_utm(self, utm=None):
+        if utm is None:  # выбрать все utm
+            query = f'''SELECT * FROM utm'''
+        else:
+            query = f'''SELECT * FROM utm WHERE name = '{utm}' '''
+        return self.fetch_as_dicts(query)
+
+    def update_utm(self, utm):
+        query = f'''UPDATE utm
+                SET clicks = clicks + 1
+                WHERE name = {utm};
+        '''
+        self.execute_query(query)
+
+    def add_utm(self, utm, clicks):
+        query = f'''INSERT INTO utm (name, clicks) 
+        VALUES ('{utm}', {clicks})
+        '''
+        self.execute_query(query)
+
     @staticmethod
     def open_connection():
         conn = None
