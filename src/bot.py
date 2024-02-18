@@ -70,6 +70,7 @@ class FishingBot:
         return config["Admin"]["admin_ids"]
 
     async def send_message(self, user_id, message, entities=None):
+        user_id = user_id.replace('_', r'\_')  # ВОТ ЭТУ ШТУКУ НАДО ПРОТЕСТИРОВАТЬ
         await self.application.bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown",
                                                 entities=entities)
 
@@ -87,9 +88,12 @@ class FishingBot:
         user = update.effective_user
         print(f"Trying to insert player {user.id}, {user.username}")
         self.db_connector.insert_player(user.id, user.username)
-        await update.message.reply_html(
-            self.get_text("bot_start").format(user.mention_html()),
-            reply_markup=self.menu_markup,
+        keyboard = [[KeyboardButton('Ловить рыбу')], [KeyboardButton('Продать рыбу')], [KeyboardButton('Меню')]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text(
+            self.get_text("bot_start").format(user.mention_markdown_v2()),
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
         )
 
     async def menu(self, update: Update, context):
