@@ -341,7 +341,7 @@ class DBConnector:
     def update_utm(self, utm):
         query = f'''UPDATE utm
                 SET clicks = clicks + 1
-                WHERE name = {utm};
+                WHERE name = '{utm}'
         '''
         self.execute_query(query)
 

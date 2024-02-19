@@ -137,7 +137,7 @@ class FishingBot:
             self.db_connector.insert_player(user.id, user.username)
             if not self.db_connector.get_utm(utm_name):  # если по этой метке перешли впервые
                 print(f"Adding new utm: {utm_name}, 0")
-                await self.db_connector.add_utm(utm_name, 0)
+                await self.db_connector.add_utm(utm_name, 1)
             self.db_connector.update_utm(utm_name)
 
         keyboard = [[KeyboardButton('Ловить рыбу')], [KeyboardButton('Продать рыбу')], [KeyboardButton('Меню')]]
