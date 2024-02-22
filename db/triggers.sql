@@ -30,6 +30,10 @@ BEGIN
             VALUES (storage_id, i, 0);
         END LOOP;
 
+    UPDATE player
+    SET insertion_datetime = NOW()
+    WHERE player_id = NEW.player_id;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
