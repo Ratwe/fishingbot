@@ -42,11 +42,11 @@ BEGIN
 
             avg_catch := 5 + i - 1;
 
-            SELECT ARRAY_AGG(ROW (fish.fish_name, fish_chances.catch_chance))
+            SELECT ARRAY_AGG(ROW (fish.id, fish_chances.catch_chance))
             INTO fish_data
             FROM fish_chances
                      JOIN net ON net.level = fish_chances.net_level
-                     JOIN fish ON fish_chances.fish_name = fish.fish_name
+                     JOIN fish ON fish_chances.fish_id = fish.id
             WHERE net.level = i;
 
             total_rod_cost := 0;
