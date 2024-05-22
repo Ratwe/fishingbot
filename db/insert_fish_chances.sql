@@ -41,8 +41,8 @@ BEGIN
                     mid_fish_chance := 1.0 - 0.15 * (i - 4);
                     new_fish_chance := 0.15 * (i - 4);
                 ELSE
-                    old_fish_chance := GREATEST(0.0000, old_fish_chance * 0.8);
-                    mid_fish_chance := GREATEST(0.0000, mid_fish_chance * 0.9);
+                    old_fish_chance := GREATEST(0, old_fish_chance * 0.8);
+                    mid_fish_chance := GREATEST(0, mid_fish_chance * 0.9);
                     new_fish_chance := 1.0 - old_fish_chance - mid_fish_chance;
                 END IF;
             END IF;
