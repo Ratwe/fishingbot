@@ -31,7 +31,7 @@ BEGIN
         END LOOP;
 
     UPDATE player
-    SET insertion_datetime = NOW()
+    SET insert_datetime = NOW()
     WHERE player_id = NEW.player_id;
 
     RETURN NEW;

@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS fish
     experience INT
 );
 
-DROP TABLE rod CASCADE;
 CREATE TABLE IF NOT EXISTS rod
 (
     level    INT PRIMARY KEY,
@@ -15,7 +14,6 @@ CREATE TABLE IF NOT EXISTS rod
 );
 CALL insert_rod(200);
 
-DROP TABLE net CASCADE;
 CREATE TABLE IF NOT EXISTS net
 (
     level      INT PRIMARY KEY,
@@ -25,7 +23,6 @@ CREATE TABLE IF NOT EXISTS net
 );
 CALL insert_net(200);
 
-DROP TABLE player CASCADE;
 CREATE TABLE IF NOT EXISTS player
 (
     player_id  BIGINT PRIMARY KEY,
@@ -36,21 +33,22 @@ CREATE TABLE IF NOT EXISTS player
     experience INT
 );
 
-
-DROP TABLE fish_chances;
 CREATE TABLE IF NOT EXISTS fish_chances
 (
     id           SERIAL PRIMARY KEY,
-    fish_id      INT REFERENCES fish (id) ON DELETE CASCADE,
+    fish_id      INT REFERENCES fish (id)
+        ON DELETE CASCADE,
     rod_level    INT REFERENCES rod (level),
     net_level    INT REFERENCES net (level),
     catch_chance NUMERIC(4, 3)
 );
+CALL insert_fish_chances(200);
 
 CREATE TABLE IF NOT EXISTS stats
 (
     id            SERIAL PRIMARY KEY,
-    player_id     BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
+    player_id     BIGINT REFERENCES player (player_id)
+        ON DELETE CASCADE,
     balance       BIGINT,
     total_earning BIGINT
 );
@@ -59,42 +57,36 @@ CREATE TABLE IF NOT EXISTS fish_caught
 (
     id            SERIAL PRIMARY KEY,
     stats_id      INT REFERENCES stats (id),
-    fish_id       INT REFERENCES fish (id) ON DELETE CASCADE,
+    fish_id       INT REFERENCES fish (id)
+        ON DELETE CASCADE,
     caught_amount INT
 );
 
 CREATE TABLE IF NOT EXISTS storage
 (
     id        SERIAL PRIMARY KEY,
-    player_id BIGINT REFERENCES player (player_id) ON DELETE CASCADE
+    player_id BIGINT REFERENCES player (player_id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS fish_stored
 (
     id            SERIAL PRIMARY KEY,
     storage_id    INT REFERENCES storage (id),
-    fish_id       INT REFERENCES fish (id) ON DELETE CASCADE,
+    fish_id       INT REFERENCES fish (id)
+        ON DELETE CASCADE,
     stored_amount INT
 );
 
-DROP TABLE leaderboard;
 CREATE TABLE IF NOT EXISTS leaderboard
 (
     id        SERIAL PRIMARY KEY,
-    player_id BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
+    player_id BIGINT REFERENCES player (player_id)
+        ON DELETE CASCADE,
     rank      INT
 );
 
-CREATE TABLE IF NOT EXISTS promoted_channels
-(
-    id   SERIAL PRIMARY KEY,
-    link VARCHAR(50) UNIQUE,
-    taps INT
-);
-
-
-DROP TABLE level_hardness;
-CREATE TABLE level_hardness
+CREATE TABLE IF NOT EXISTS level_hardness
 (
     level           INT PRIMARY KEY,
     rod_price       DECIMAL(1000, 0),
@@ -113,49 +105,33 @@ CREATE TABLE level_hardness
     exp_to_unlock   DECIMAL(20, 0),
     time_to_unlock  FLOAT
 );
-
 CALL calc_level_hardness(50);
 
-CREATE TABLE levels
+CREATE TABLE IF NOT EXISTS levels
 (
     level        INT PRIMARY KEY,
     exp_required DECIMAL(20, 0)
 );
 
-CREATE TABLE last_usages
+CREATE TABLE IF NOT EXISTS last_usages
 (
     id           SERIAL PRIMARY KEY,
-    player_id    BIGINT REFERENCES player (player_id) ON DELETE CASCADE,
+    player_id    BIGINT REFERENCES player (player_id)
+        ON DELETE CASCADE,
     rod_last_use TIMESTAMP,
     net_last_use TIMESTAMP
 );
 
-drop table utm;
-CREATE TABLE utm
+CREATE TABLE IF NOT EXISTS promoted_channels
+(
+    id   SERIAL PRIMARY KEY,
+    link VARCHAR(50) UNIQUE,
+    taps INT
+);
+
+CREATE TABLE IF NOT EXISTS utm
 (
     id    SERIAL PRIMARY KEY,
     name  VARCHAR(50),
     clicks INT
 );
-
-INSERT INTO promoted_channels
-VALUES (default, 'https://t.me/sobachki_real', 0),
-       (default, 'https://t.me/kotiki_real', 0);
-
-TRUNCATE TABLE player CASCADE;
-INSERT INTO player
-VALUES (2, 'name4', 0, 0, 2, 0),
-       (3, 'name5', 0, 0, 1, 0),
-       (4, 'name44', 0, 0, 1, 0);
-
-
-INSERT INTO player
-VALUES (5128641039, 'dunda2', 0, 0, 1, 0);
-DELETE
-FROM player
-WHERE name = 'dunda2';
-
-CALL insert_fish_chances(200);
-
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO dev;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO dev;
